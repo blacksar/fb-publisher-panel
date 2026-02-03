@@ -1,0 +1,61 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model FBSession {
+  id          Int       @id @default(autoincrement())
+  name        String
+  cookie      String    @db.Text
+  status      String // active, inactive, pending, verified
+  c_user      String? // Facebook user ID
+  user_name   String? // Facebook user name
+  created_at  DateTime  @default(now())
+  verified_at DateTime?
+  posts       Post[]
+  pages       FBPage[]
+}
+
+model Post {
+  id           Int       @id @default(autoincrement())
+  title        String
+  content      String    @db.Text
+  status       String // draft, scheduled, published, failed
+  scheduled_at DateTime?
+  published_at DateTime?
+  image_url    String?   @db.LongText
+  page_name    String
+  page_id      String
+  fb_post_id   String?   // ID del post en Facebook
+  created_at   DateTime  @default(now())
+  session      FBSession @relation(fields: [session_id], references: [id])
+  session_id   Int
+  page         FBPage?   @relation(fields: [page_id], references: [id])
+  error_log    String?   @db.LongText
+}
+
+model FBPage {
+  id         String    @id
+  name       String
+  postsCount Int       @default(0)
+  isSyncing  Boolean   @default(false)
+  is_selected Boolean  @default(false)
+  session    FBSession @relation(fields: [session_id], references: [id])
+  session_id Int
+  posts      Post[]
+}
+
+model Setting {
+  key   String @id
+  value String @db.Text
+}

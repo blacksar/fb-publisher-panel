@@ -1,0 +1,140 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222.2 84% 4.9%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222.2 84% 4.9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 84% 4.9%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 94.1%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-white dark:bg-gray-950 text-foreground;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-track:dark {
+  background: #374151;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:dark {
+  background: #6b7280;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+::-webkit-scrollbar-thumb:hover:dark {
+  background: #9ca3af;
+}
+
+
+
+/* Ensure all components have solid backgrounds */
+[data-radix-popper-content-wrapper] {
+  @apply bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800;
+}
+
+/* Table improvements */
+.table-row-hover {
+  @apply hover:bg-gray-50 dark:hover:bg-gray-800/50;
+}
+
+/* Badge improvements */
+.badge-solid {
+  @apply border-0 font-medium;
+}
+
+/* Button improvements */
+.btn-outline {
+  @apply border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800;
+}
+
+/* Card improvements */
+.card-solid {
+  @apply bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 shadow-sm;
+}
+
+/* Input improvements */
+.input-solid {
+  @apply bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:border-[#2563eb] dark:focus:border-[#3b82f6];
+}
+
+/* Dialog improvements */
+.dialog-solid {
+  @apply bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800;
+}
+
+/* Ensure proper contrast in dark mode */
+.dark .text-muted-foreground {
+  @apply text-gray-400;
+}
+
+.dark .border-border {
+  @apply border-gray-800;
+}
+
+/* Loading skeleton improvements */
+.skeleton-solid {
+  @apply bg-gray-200 dark:bg-gray-800;
+}
