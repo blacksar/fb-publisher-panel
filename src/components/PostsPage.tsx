@@ -211,6 +211,26 @@ export function PostsPage() {
   const noAccountSelected = !selectedSessionId || sessions.length === 0
   const buttonsDisabled = noAccountSelected || isSessionInactive
 
+  // Helpers para fechas (manejo UTC/local)
+  const toUTCISOString = (value: string) => {
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return value
+    return date.toISOString()
+  }
+
+  const toDatetimeLocalValue = (value?: string | null) => {
+    if (!value) return ""
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return ""
+    const pad = (num: number) => num.toString().padStart(2, "0")
+    const year = date.getFullYear()
+    const month = pad(date.getMonth() + 1)
+    const day = pad(date.getDate())
+    const hours = pad(date.getHours())
+    const minutes = pad(date.getMinutes())
+    return `${year}-${month}-${day}T${hours}:${minutes}`
+  }
+
   // Reset form when modal opens (solo si no estamos editando)
   useEffect(() => {
     if (isModalOpen && !editingPost) {
@@ -345,7 +365,7 @@ export function PostsPage() {
       }
       if (editingPost) (payload as any).postId = editingPost.id
       if (sessionIdStr) payload.sessionId = parseInt(sessionIdStr, 10)
-      if (formData.scheduled_at) payload.scheduledAt = formData.scheduled_at
+      if (formData.scheduled_at) payload.scheduledAt = toUTCISOString(formData.scheduled_at)
 
       const finalEndpoint = action === "schedule" ? "/api/schedule-post" : "/api/publish-post"
       if (action === "draft") (payload as any).save_draft = true
@@ -483,7 +503,7 @@ export function PostsPage() {
       title: post.title,
       content: post.title,
       comment: post.content,
-      scheduled_at: post.scheduled_at || "",
+      scheduled_at: toDatetimeLocalValue(post.scheduled_at),
       images: [],
     })
     setIsModalOpen(true)
