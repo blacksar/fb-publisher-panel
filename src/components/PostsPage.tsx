@@ -577,6 +577,7 @@ export function PostsPage() {
           isSessionInactive={!!buttonsDisabled}
           noPagesSelected={!!selectedSessionId && pagesList.length === 0}
           editingPost={editingPost}
+          postsWithScheduled={posts.map((p) => ({ page_id: p.page_id, scheduled_at: p.scheduled_at, status: p.status }))}
           onClear={() => {
             setFormData((prev) => ({ ...prev, title: "", content: "", comment: "", images: [] }))
           }}

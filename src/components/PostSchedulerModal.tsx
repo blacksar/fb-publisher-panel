@@ -48,6 +48,12 @@ export interface PostSchedulerFormData {
   images: File[]
 }
 
+export interface ScheduledPostRef {
+  page_id: string
+  scheduled_at?: string | null
+  status: string
+}
+
 export interface PostSchedulerModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -60,6 +66,8 @@ export interface PostSchedulerModalProps {
   noPagesSelected?: boolean
   editingPost?: { page_name: string; image_url?: string } | null
   onClear?: () => void
+  /** Posts con scheduled_at para calcular última programación por página */
+  postsWithScheduled?: ScheduledPostRef[]
 }
 
 export function PostSchedulerModal({
@@ -74,6 +82,7 @@ export function PostSchedulerModal({
   noPagesSelected,
   editingPost,
   onClear,
+  postsWithScheduled = [],
 }: PostSchedulerModalProps) {
   const modalButtonsDisabled = isSubmitting || isSessionInactive || noPagesSelected
   const [searchQuery, setSearchQuery] = useState("")
@@ -120,6 +129,47 @@ export function PostSchedulerModal({
 
   const selectedPage = pagesList.find((p) => p.id === formData.page_id)
   const previewPageName = selectedPage?.name ?? editingPost?.page_name ?? ""
+
+  // Última programación para la página seleccionada
+  const lastScheduledForPage = useMemo(() => {
+    if (!formData.page_id) return null
+    const withScheduled = postsWithScheduled.filter(
+      (p) => p.page_id === formData.page_id && p.scheduled_at
+    )
+    if (withScheduled.length === 0) return null
+    const sorted = [...withScheduled].sort(
+      (a, b) => new Date(b.scheduled_at!).getTime() - new Date(a.scheduled_at!).getTime()
+    )
+    return sorted[0]
+  }, [formData.page_id, postsWithScheduled])
+
+  // Helper: Date → valor para datetime-local (YYYY-MM-DDTHH:mm)
+  const toDatetimeLocalValue = (d: Date) => {
+    const pad = (n: number) => n.toString().padStart(2, "0")
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+
+  // Establecer hora por defecto: 1h después de la última programación, redondeada a la hora siguiente
+  useEffect(() => {
+    if (!open || editingPost || !formData.page_id) return
+    const last = lastScheduledForPage
+    const now = new Date()
+    let defaultDate: Date
+    if (last?.scheduled_at) {
+      const lastDate = new Date(last.scheduled_at)
+      defaultDate = new Date(lastDate.getTime() + 60 * 60 * 1000) // +1 hora
+      defaultDate.setMinutes(0, 0, 0) // redondear a XX:00
+      if (defaultDate <= now) defaultDate = new Date(now.getTime() + 30 * 60 * 1000) // si ya pasó, usar ahora+30min
+    } else {
+      defaultDate = new Date(now.getTime() + 60 * 60 * 1000)
+      defaultDate.setMinutes(0, 0, 0)
+      if (defaultDate <= now) defaultDate.setHours(defaultDate.getHours() + 1, 0, 0, 0)
+    }
+    setFormData((prev) => ({
+      ...prev,
+      scheduled_at: toDatetimeLocalValue(defaultDate),
+    }))
+  }, [open, formData.page_id, editingPost, lastScheduledForPage?.scheduled_at])
 
   const handleClear = () => {
     if (onClear) {
@@ -483,23 +533,30 @@ export function PostSchedulerModal({
 
             {/* Footer acciones: fijo en la parte inferior del centro */}
             <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+                <div className="flex items-center gap-2">
                   <Input
-                  type="datetime-local"
-                  value={formData.scheduled_at}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      scheduled_at: e.target.value,
-                    }))
-                  }
-                  disabled={modalButtonsDisabled}
-                  className="h-9 w-auto min-w-[180px] text-sm"
-                />
-                <span className="hidden text-muted-foreground sm:inline">
-                  <Calendar className="mr-1 inline h-4 w-4" />
-                  Programar
-                </span>
+                    type="datetime-local"
+                    value={formData.scheduled_at}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        scheduled_at: e.target.value,
+                      }))
+                    }
+                    disabled={modalButtonsDisabled}
+                    className="h-9 w-auto min-w-[180px] text-sm"
+                  />
+                  <span className="hidden text-muted-foreground sm:inline">
+                    <Calendar className="mr-1 inline h-4 w-4" />
+                    Programar
+                  </span>
+                </div>
+                {lastScheduledForPage?.scheduled_at && (
+                  <span className="text-xs text-muted-foreground">
+                    Última programación: {new Date(lastScheduledForPage.scheduled_at).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })}
+                  </span>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
