@@ -156,6 +156,25 @@ export function PostSchedulerModal({
     }))
   }
 
+  const handlePaste = (e: React.ClipboardEvent) => {
+    if (modalButtonsDisabled) return
+    const items = e.clipboardData?.items
+    if (!items) return
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith("image/")) {
+        e.preventDefault()
+        const file = item.getAsFile()
+        if (file) {
+          setFormData((prev) => ({
+            ...prev,
+            images: [...(prev.images ?? []), file],
+          }))
+        }
+        break
+      }
+    }
+  }
+
   // URLs para miniaturas (revocar al desmontar o cambiar imágenes)
   const [thumbUrls, setThumbUrls] = useState<string[]>([])
   const prevThumbUrlsRef = useRef<string[]>([])
@@ -183,7 +202,7 @@ export function PostSchedulerModal({
         side="right"
         className="z-[100] flex h-full w-[95vw] max-w-7xl flex-col gap-0 border-l p-0 sm:max-w-7xl [&>button]:hidden"
       >
-        <div className="flex h-full overflow-hidden">
+        <div className="flex h-full overflow-hidden" onPaste={handlePaste}>
           {/* Columna izquierda: selector de páginas */}
           <div className="flex w-56 shrink-0 flex-col border-r border-border bg-muted/30">
             {noPagesSelected && (

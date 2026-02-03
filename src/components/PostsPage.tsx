@@ -673,11 +673,8 @@ export function PostsPage() {
                               )}
                             </TableCell>
                             <TableCell>
-                              <div>
-                                <div className="font-medium text-gray-900 dark:text-gray-100">{post.title}</div>
-                                <div className="text-sm text-gray-500 dark:text-gray-400 truncate max-w-xs">
-                                  {post.content}
-                                </div>
+                              <div className="font-medium text-gray-900 dark:text-gray-100 max-w-[200px]">
+                                {post.title.length > 30 ? `${post.title.slice(0, 30)}…` : post.title}
                               </div>
                             </TableCell>
                             <TableCell className="text-gray-900 dark:text-gray-100 font-medium">
