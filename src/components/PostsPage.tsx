@@ -231,7 +231,7 @@ export function PostsPage() {
     return `${year}-${month}-${day}T${hours}:${minutes}`
   }
 
-  // Reset form when modal opens (solo si no estamos editando)
+  // Reset form when modal opens (solo si no estamos editando; scheduled_at lo establece el modal según última programación)
   useEffect(() => {
     if (isModalOpen && !editingPost) {
       setFormData(prev => ({
@@ -239,7 +239,6 @@ export function PostsPage() {
         title: "",
         content: "",
         comment: "",
-        scheduled_at: "",
         images: [],
       }))
     }

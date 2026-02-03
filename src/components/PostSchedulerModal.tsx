@@ -149,7 +149,7 @@ export function PostSchedulerModal({
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
   }
 
-  // Establecer hora por defecto: 1h después de la última programación, redondeada a la hora siguiente
+  // Establecer hora por defecto: 1h después de la última programación, redondeada a XX:00 (2:01 → 3:00, respetando AM/PM)
   useEffect(() => {
     if (!open || editingPost || !formData.page_id) return
     const last = lastScheduledForPage
@@ -158,8 +158,14 @@ export function PostSchedulerModal({
     if (last?.scheduled_at) {
       const lastDate = new Date(last.scheduled_at)
       defaultDate = new Date(lastDate.getTime() + 60 * 60 * 1000) // +1 hora
-      defaultDate.setMinutes(0, 0, 0) // redondear a XX:00
-      if (defaultDate <= now) defaultDate = new Date(now.getTime() + 30 * 60 * 1000) // si ya pasó, usar ahora+30min
+      defaultDate.setMinutes(0, 0, 0) // redondear a XX:00 (2:01 → 3:00)
+      if (defaultDate <= now) {
+        // Si ya pasó, mantener la misma hora (ej. 3:00) en hoy o mañana
+        const targetHour = defaultDate.getHours()
+        defaultDate = new Date(now)
+        defaultDate.setHours(targetHour, 0, 0, 0)
+        if (defaultDate <= now) defaultDate.setDate(defaultDate.getDate() + 1)
+      }
     } else {
       defaultDate = new Date(now.getTime() + 60 * 60 * 1000)
       defaultDate.setMinutes(0, 0, 0)
@@ -555,6 +561,17 @@ export function PostSchedulerModal({
                 {lastScheduledForPage?.scheduled_at && (
                   <span className="text-xs text-muted-foreground">
                     Última programación: {new Date(lastScheduledForPage.scheduled_at).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })}
+                  </span>
+                )}
+                {formData.scheduled_at && (
+                  <span className="text-xs font-medium text-foreground/90">
+                    Se programará: {(() => {
+                      const d = new Date(formData.scheduled_at)
+                      if (Number.isNaN(d.getTime())) return formData.scheduled_at
+                      const pad = (n: number) => n.toString().padStart(2, "0")
+                      const h24 = `${pad(d.getHours())}:${pad(d.getMinutes())}`
+                      return `${d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" })} a las ${h24} (24h)`
+                    })()}
                   </span>
                 )}
               </div>
