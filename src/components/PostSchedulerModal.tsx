@@ -140,11 +140,11 @@ export function PostSchedulerModal({
   const selectedPage = pagesList.find((p) => p.id === formData.page_id)
   const previewPageName = selectedPage?.name ?? editingPost?.page_name ?? ""
 
-  // Última programación para la página seleccionada
+  // Última programación PENDIENTE para la página (solo status "scheduled", no publicados)
   const lastScheduledForPage = useMemo(() => {
     if (!formData.page_id) return null
     const withScheduled = postsWithScheduled.filter(
-      (p) => p.page_id === formData.page_id && p.scheduled_at
+      (p) => p.page_id === formData.page_id && p.scheduled_at && p.status === "scheduled"
     )
     if (withScheduled.length === 0) return null
     const sorted = [...withScheduled].sort(
