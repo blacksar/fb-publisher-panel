@@ -1,5 +1,6 @@
 #!/bin/sh
 set -e
+export TZ=UTC
 
 # 1. Crea la base de datos si no existe (requiere permisos CREATE en MySQL)
 npm run init-db

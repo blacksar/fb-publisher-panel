@@ -18,6 +18,8 @@ RUN npm run build
 FROM node:18-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+# UTC para que programación de posts funcione correctamente en cualquier zona horaria
+ENV TZ=UTC
 
 # ▸ Paquetes extra: openssl (Prisma) + curl (descarga de supercronic)
 RUN apk add --no-cache openssl curl && \

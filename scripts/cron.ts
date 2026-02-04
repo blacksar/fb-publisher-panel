@@ -15,6 +15,7 @@ async function previewToBase64(urlPath: string): Promise<string> {
 }
 
 async function run() {
+  // Comparación en UTC (servidor debe tener TZ=UTC para consistencia)
   const now = new Date()
   const due = await prisma.post.findMany({
     where: { status: "scheduled", scheduled_at: { lte: now } },

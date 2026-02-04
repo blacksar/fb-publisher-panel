@@ -7,6 +7,11 @@ export async function POST(request: Request) {
   try {
     const { sessionId, pageId, title, comment, imageBase64, scheduledAt } = await request.json()
     if (!scheduledAt) return NextResponse.json({ status: "error", mensaje: "Fecha de programación requerida" }, { status: 400 })
+    // scheduledAt debe venir en UTC (ISO 8601, ej. "2026-02-02T20:00:00.000Z")
+    const scheduledDate = new Date(scheduledAt)
+    if (Number.isNaN(scheduledDate.getTime())) {
+      return NextResponse.json({ status: "error", mensaje: "Fecha de programación inválida" }, { status: 400 })
+    }
 
     // 1. Resolve Session
     let session
@@ -65,7 +70,7 @@ export async function POST(request: Request) {
         title,
         content: comment,
         status: "scheduled",
-        scheduled_at: new Date(scheduledAt),
+        scheduled_at: scheduledDate,
         image_url: previewUrl,
         page_id: pageId,
         page_name: pageName,
