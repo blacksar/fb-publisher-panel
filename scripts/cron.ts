@@ -14,26 +14,31 @@ async function previewToBase64(urlPath: string): Promise<string> {
   return `data:${mime};base64,${buffer.toString("base64")}`
 }
 
+async function getImageBase64(p: { id: number; image_url?: string | null }) {
+  if (!p.image_url) return undefined
+  if (p.image_url.startsWith("/uploads/")) {
+    try {
+      return await previewToBase64(p.image_url)
+    } catch (err) {
+      console.error("Error leyendo imagen para post", p.id, err)
+      return undefined
+    }
+  }
+  if (p.image_url.startsWith("data:image/")) return p.image_url
+  return undefined
+}
+
 async function run() {
-  // Comparación en UTC (servidor debe tener TZ=UTC para consistencia)
+  const baseUrl = process.env.CRON_BASE_URL || "http://localhost:3000"
+
+  // 1. Programados vencidos
   const now = new Date()
   const due = await prisma.post.findMany({
     where: { status: "scheduled", scheduled_at: { lte: now } },
   })
   for (const p of due) {
-    let imgBase64: string | undefined = undefined
-    if (p.image_url) {
-      if (p.image_url.startsWith("/uploads/")) {
-        try {
-          imgBase64 = await previewToBase64(p.image_url)
-        } catch (err) {
-          console.error("Error leyendo imagen para post", p.id, err)
-        }
-      } else if (p.image_url.startsWith("data:image/")) {
-        imgBase64 = p.image_url
-      }
-    }
-    await fetch("http://localhost:3000/api/publish-post", {
+    const imgBase64 = await getImageBase64(p)
+    await fetch(`${baseUrl}/api/publish-post`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -46,6 +51,27 @@ async function run() {
       }),
     })
   }
+
+  // 2. Pendientes (retry automático cada minuto; se publican cuando la sesión esté verificada)
+  const pending = await prisma.post.findMany({
+    where: { status: "pending" },
+  })
+  for (const p of pending) {
+    const imgBase64 = await getImageBase64(p)
+    await fetch(`${baseUrl}/api/publish-post`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        postId: p.id,
+        sessionId: p.session_id,
+        pageId: p.page_id,
+        title: p.title,
+        comment: p.content,
+        imageBase64: imgBase64,
+      }),
+    })
+  }
+
   await prisma.$disconnect()
 }
 

@@ -163,6 +163,7 @@ async function fetchPostsFromServer(): Promise<Post[]> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      cache: "no-store",
     })
     const data = await res.json()
     if (data.status === "ok") return data.posts as Post[]
@@ -293,6 +294,14 @@ export function PostsPage() {
       finally { setSessionsLoaded(true) }
     })()
   }, [selectedSessionId])
+
+  // Refetch posts al abrir el modal para tener datos frescos de la BD (última programación correcta)
+  useEffect(() => {
+    if (!isModalOpen || !selectedSessionId) return
+    fetchPostsFromServer().then((p) => {
+      if (Array.isArray(p)) setPosts(p)
+    })
+  }, [isModalOpen])
 
   // whenever session changes, load pages & posts
   useEffect(() => {
