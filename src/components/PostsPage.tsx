@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
+import { usePathname } from "next/navigation"
 // Removed motion import - no animations needed
 import { Plus, ImageIcon, Calendar, Loader2, AlertTriangle, ExternalLink, Trash2, Edit, Send, MoreHorizontal } from "lucide-react"
 import { toast } from "sonner"
@@ -207,6 +208,7 @@ export function PostsPage() {
     if (storedPage) setFormData(prev => ({ ...prev, page_id: storedPage }))
   }, [mounted])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const pathname = usePathname()
 
   // Session guard
   const selectedSession = sessions.find(s => s.id.toString() === selectedSessionId)
@@ -264,36 +266,44 @@ export function PostsPage() {
     }
   }, [isModalOpen])
 
-  // fetch sessions list once
-  useEffect(() => {
-    ; (async () => {
-      try {
-        const res = await fetch('/api/list-sessions')
-        const data = await res.json()
-        if (data.status === 'ok') {
-          const formattedSessions = data.sessions.map((session: any) => ({
-            id: session.id,
-            name: session.name,
-            user_name: session.user_name,
-            status: session.status
-          }))
-          setSessions(formattedSessions)
-          if (formattedSessions.length > 0) {
-            const stored = typeof window !== 'undefined' ? localStorage.getItem('selectedSessionId') : null
-            const storedValid = stored && formattedSessions.some((s: any) => s.id.toString() === stored)
-            if (storedValid) {
-              setSelectedSessionId(stored)
-            } else {
-              const first = formattedSessions.find((s: any) => s.status === 'verified') || formattedSessions[0]
-              setSelectedSessionId(first.id.toString())
-              if (typeof window !== 'undefined') localStorage.setItem('selectedSessionId', first.id.toString())
-            }
+  // Sessions: refetch al cargar, al volver a la pestaña y al navegar aquí (tras verificar en Cuentas)
+  const fetchSessions = useCallback(async () => {
+    try {
+      const res = await fetch('/api/list-sessions', { cache: 'no-store' })
+      const data = await res.json()
+      if (data.status === 'ok' && Array.isArray(data.sessions)) {
+        const formattedSessions = data.sessions.map((session: any) => ({
+          id: session.id,
+          name: session.name,
+          user_name: session.user_name,
+          status: session.status
+        }))
+        setSessions(formattedSessions)
+        if (formattedSessions.length > 0) {
+          const stored = typeof window !== 'undefined' ? localStorage.getItem('selectedSessionId') : null
+          const storedValid = stored && formattedSessions.some((s: any) => s.id.toString() === stored)
+          if (storedValid) {
+            setSelectedSessionId(stored)
+          } else {
+            const first = formattedSessions.find((s: any) => s.status === 'verified') || formattedSessions[0]
+            setSelectedSessionId(first.id.toString())
+            if (typeof window !== 'undefined') localStorage.setItem('selectedSessionId', first.id.toString())
           }
         }
-      } catch { }
-      finally { setSessionsLoaded(true) }
-    })()
-  }, [selectedSessionId])
+      }
+    } catch { /* silenciar */ }
+    finally { setSessionsLoaded(true) }
+  }, [])
+
+  useEffect(() => {
+    void fetchSessions()
+  }, [fetchSessions, pathname])
+
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') void fetchSessions() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [fetchSessions])
 
   // Refetch posts al abrir el modal para tener datos frescos de la BD (última programación correcta)
   useEffect(() => {
