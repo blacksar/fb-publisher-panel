@@ -170,22 +170,17 @@ export function PostSchedulerModal({
     if (!didOpen && !didChangePage) return
 
     const last = lastScheduledForPage
+    if (!last?.scheduled_at) return // Solo ajustar si existe al menos un post programado para esta página
+
     const now = new Date()
-    let defaultDate: Date
-    if (last?.scheduled_at) {
-      const lastDate = new Date(last.scheduled_at)
-      defaultDate = new Date(lastDate.getTime() + 60 * 60 * 1000) // +1 hora
-      defaultDate.setMinutes(0, 0, 0) // redondear a XX:00 (2:01 → 3:00)
-      if (defaultDate <= now) {
-        const targetHour = defaultDate.getHours()
-        defaultDate = new Date(now)
-        defaultDate.setHours(targetHour, 0, 0, 0)
-        if (defaultDate <= now) defaultDate.setDate(defaultDate.getDate() + 1)
-      }
-    } else {
-      defaultDate = new Date(now.getTime() + 60 * 60 * 1000)
-      defaultDate.setMinutes(0, 0, 0)
-      if (defaultDate <= now) defaultDate.setHours(defaultDate.getHours() + 1, 0, 0, 0)
+    const lastDate = new Date(last.scheduled_at)
+    let defaultDate = new Date(lastDate.getTime() + 60 * 60 * 1000) // +1 hora
+    defaultDate.setMinutes(0, 0, 0) // redondear a XX:00 (2:01 → 3:00)
+    if (defaultDate <= now) {
+      const targetHour = defaultDate.getHours()
+      defaultDate = new Date(now)
+      defaultDate.setHours(targetHour, 0, 0, 0)
+      if (defaultDate <= now) defaultDate.setDate(defaultDate.getDate() + 1)
     }
     setFormData((prev) => ({
       ...prev,
