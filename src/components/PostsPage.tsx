@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 // Removed motion import - no animations needed
 import { Plus, ImageIcon, Calendar, Loader2, AlertTriangle, ExternalLink, Trash2, Edit, Send, MoreHorizontal } from "lucide-react"
 import { toast } from "sonner"
@@ -188,6 +188,8 @@ export function PostsPage() {
     scheduled_at: "",
     images: [] as File[],
   })
+  const formDataRef = useRef(formData)
+  formDataRef.current = formData
   const [pagesList, setPagesList] = useState<Page[]>([])
   const [sessions, setSessions] = useState<SessionOption[]>([])
   const [selectedSessionId, setSelectedSessionId] = useState<string | "">("")
@@ -231,9 +233,12 @@ export function PostsPage() {
     return `${year}-${month}-${day}T${hours}:${minutes}`
   }
 
-  // Reset form when modal opens (solo si no estamos editando; scheduled_at lo establece el modal según última programación)
+  // Reset form solo al abrir el modal (no al cerrar ni en re-renders); scheduled_at lo establece el modal
+  const prevModalOpenRef = useRef(false)
   useEffect(() => {
-    if (isModalOpen && !editingPost) {
+    const didOpen = isModalOpen && !prevModalOpenRef.current
+    prevModalOpenRef.current = isModalOpen
+    if (didOpen && !editingPost) {
       setFormData(prev => ({
         ...prev,
         title: "",
@@ -342,13 +347,17 @@ export function PostsPage() {
 
     try {
       setIsSubmitting(true)
+      // Usar formDataRef para evitar clausuras obsoletas (ej. tras paste/async)
+      const currentFormData = formDataRef.current
+      const images = currentFormData.images ?? []
       let imageBase64: string | null = null
-      if (formData.images?.length > 0) {
+      if (images.length > 0) {
+        const file = images[0]
         imageBase64 = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader()
           reader.onload = () => resolve(reader.result as string)
           reader.onerror = reject
-          reader.readAsDataURL(formData.images[0])
+          reader.readAsDataURL(file)
         })
       } else if (editingPost?.image_url) {
         imageBase64 = editingPost.image_url
@@ -357,14 +366,14 @@ export function PostsPage() {
       const sessionIdStr = typeof window !== "undefined" ? localStorage.getItem("selectedSessionId") : null
       // Primer input (content) → title en API. Segundo input (comment) → comment en API.
       const payload: Record<string, unknown> = {
-        pageId: formData.page_id,
-        title: formData.content.trim(),
-        comment: (formData.comment ?? "").trim(),
+        pageId: currentFormData.page_id,
+        title: currentFormData.content.trim(),
+        comment: (currentFormData.comment ?? "").trim(),
         imageBase64,
       }
       if (editingPost) (payload as any).postId = editingPost.id
       if (sessionIdStr) payload.sessionId = parseInt(sessionIdStr, 10)
-      if (formData.scheduled_at) payload.scheduledAt = toUTCISOString(formData.scheduled_at)
+      if (currentFormData.scheduled_at) payload.scheduledAt = toUTCISOString(currentFormData.scheduled_at)
 
       const finalEndpoint = action === "schedule" ? "/api/schedule-post" : "/api/publish-post"
       if (action === "draft") (payload as any).save_draft = true

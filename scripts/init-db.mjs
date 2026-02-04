@@ -1,71 +1,79 @@
+/**
+ * Crea la base de datos si no existe.
+ * Conecta a MySQL sin especificar DB, ejecuta CREATE DATABASE IF NOT EXISTS,
+ * y luego cierra. Prisma migrate deploy creará las tablas.
+ *
+ * Uso: node scripts/init-db.mjs
+ * Requiere: DATABASE_URL (ej. mysql://user:pass@host:3306/nombre_db)
+ */
+import mysql from 'mysql2/promise'
 
-import mysql from 'mysql2/promise';
-
-async function main() {
-    if (!process.env.DATABASE_URL) {
-        try {
-            // Intenta cargar .env nativamente (Node.js 20+)
-            process.loadEnvFile();
-        } catch (e) {
-            // Ignorar si falla, asumimos que variables ya están en el entorno o no hay .env
-            console.log('ℹ️ No se pudo cargar .env o ya están definidas las variables.');
+async function loadEnv() {
+    if (process.env.DATABASE_URL) return
+    try {
+        const { readFileSync } = await import('fs')
+        const { join } = await import('path')
+        const envPath = join(process.cwd(), '.env')
+        const content = readFileSync(envPath, 'utf8')
+        for (const line of content.split('\n')) {
+            const m = line.match(/^\s*([^#=]+)=(.*)$/)
+            if (m) {
+                const key = m[1].trim()
+                const val = m[2].replace(/^["']|["']$/g, '').trim()
+                if (!process.env[key]) process.env[key] = val
+            }
         }
-    }
-
-    const databaseUrl = process.env.DATABASE_URL;
-
-    if (!databaseUrl) {
-        console.error('❌ DATABASE_URL no está definida.');
-        process.exit(1);
-    }
-
-    // Parsear URL básica: mysql://USER:PASSWORD@HOST:PORT/DB
-    // Ejemplo: mysql://root:root@localhost:3306/fb_blacksar
-    // Nota: Esto es un parser simple, podría necesitar librerías más robustas para casos complejos,
-    // pero mysql2 suele manejar URLs de conexión standard.
-
-    // Para crear la DB, necesitamos conectar sin seleccionar la DB específica primero,
-    // o conectar a una DB default como 'mysql' o 'sys'.
-    // Sin embargo, si tratamos de conectar directo a una DB que no existe, fallará.
-    // Vamos a intentar parsear para obtener los credenciales y host.
-
-    let connectionParams;
-    let dbName;
-
-    try {
-        const url = new URL(databaseUrl);
-        dbName = url.pathname.substring(1); // remover el slash inicial
-
-        // Construir params para conectar SIN la base de datos target
-        connectionParams = {
-            host: url.hostname,
-            port: url.port ? parseInt(url.port) : 3306,
-            user: url.username,
-            password: url.password,
-        };
     } catch (e) {
-        console.error('❌ Error parseando DATABASE_URL:', e);
-        process.exit(1);
-    }
-
-    if (!dbName) {
-        console.error('❌ No se encontró nombre de base de datos en DATABASE_URL.');
-        process.exit(1);
-    }
-
-    console.log(`⏳ Verificando base de datos: ${dbName}...`);
-
-    try {
-        const connection = await mysql.createConnection(connectionParams);
-
-        await connection.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\`;`);
-        console.log(`✅ Base de datos '${dbName}' verificada/creada.`);
-
-        await connection.end();
-    } catch (error) {
-        console.error('❌ Error inicializando base de datos:', error);
-        process.exit(1);
+        console.log('ℹ️ .env no encontrado o no legible, usando variables de entorno.')
     }
 }
 
-main();
+async function main() {
+    await loadEnv()
+    const databaseUrl = process.env.DATABASE_URL
+    if (!databaseUrl) {
+        console.error('❌ DATABASE_URL no está definida. Configúrala en .env')
+        process.exit(1)
+    }
+
+    let connectionParams
+    let dbName
+    try {
+        const url = new URL(databaseUrl.replace(/^mysql:/, 'http:'))
+        dbName = (url.pathname || '/').replace(/^\/+|\/+$/g, '').split('?')[0]
+        if (!dbName) {
+            console.error('❌ No se encontró nombre de base de datos en DATABASE_URL.')
+            process.exit(1)
+        }
+        connectionParams = {
+            host: url.hostname || 'localhost',
+            port: url.port ? parseInt(url.port) : 3306,
+            user: url.username || 'root',
+            password: url.password || '',
+        }
+    } catch (e) {
+        console.error('❌ Error parseando DATABASE_URL:', e.message)
+        process.exit(1)
+    }
+
+    console.log(`⏳ Conectando y creando base de datos '${dbName}' si no existe...`)
+
+    try {
+        const connection = await mysql.createConnection(connectionParams)
+        await connection.query(
+            `CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+        )
+        console.log(`✅ Base de datos '${dbName}' verificada/creada.`)
+        await connection.end()
+    } catch (error) {
+        console.error('❌ Error:', error.message)
+        if (error.code === 'ECONNREFUSED') {
+            console.error('   Asegúrate de que MySQL está corriendo y el host/puerto son correctos.')
+        } else if (error.code === 'ER_ACCESS_DENIED_ERROR') {
+            console.error('   Revisa usuario y contraseña en DATABASE_URL.')
+        }
+        process.exit(1)
+    }
+}
+
+main()
