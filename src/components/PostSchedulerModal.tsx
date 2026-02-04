@@ -159,9 +159,16 @@ export function PostSchedulerModal({
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
   }
 
-  // Establecer hora por defecto: 1h después de la última programación, redondeada a XX:00 (2:01 → 3:00, respetando AM/PM)
+  // Establecer hora por defecto SOLO al abrir el modal o al cambiar de página (nunca sobrescribir fecha manual)
+  const prevOpenAndPageRef = useRef({ open: false, pageId: "" })
   useEffect(() => {
     if (!open || editingPost || !formData.page_id) return
+    const didOpen = !prevOpenAndPageRef.current.open && open
+    const didChangePage = prevOpenAndPageRef.current.pageId !== formData.page_id
+    prevOpenAndPageRef.current = { open, pageId: formData.page_id }
+
+    if (!didOpen && !didChangePage) return
+
     const last = lastScheduledForPage
     const now = new Date()
     let defaultDate: Date
@@ -170,7 +177,6 @@ export function PostSchedulerModal({
       defaultDate = new Date(lastDate.getTime() + 60 * 60 * 1000) // +1 hora
       defaultDate.setMinutes(0, 0, 0) // redondear a XX:00 (2:01 → 3:00)
       if (defaultDate <= now) {
-        // Si ya pasó, mantener la misma hora (ej. 3:00) en hoy o mañana
         const targetHour = defaultDate.getHours()
         defaultDate = new Date(now)
         defaultDate.setHours(targetHour, 0, 0, 0)
@@ -185,7 +191,7 @@ export function PostSchedulerModal({
       ...prev,
       scheduled_at: toDatetimeLocalValue(defaultDate),
     }))
-  }, [open, formData.page_id, editingPost, lastScheduledForPage?.scheduled_at])
+  }, [open, formData.page_id, editingPost, lastScheduledForPage])
 
   const handleClear = () => {
     if (onClear) {
