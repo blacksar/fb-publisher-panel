@@ -18,6 +18,7 @@ import {
   Smile,
   ChevronUp,
   Calendar,
+  Clock,
   Loader2,
   Info,
   Check,
@@ -87,6 +88,15 @@ export function PostSchedulerModal({
   const modalButtonsDisabled = isSubmitting || isSessionInactive || noPagesSelected
   const [searchQuery, setSearchQuery] = useState("")
   const [commentInputVisible, setCommentInputVisible] = useState(false)
+
+  // Hora local en tiempo real
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    if (!open) return
+    setNow(new Date())
+    const tid = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(tid)
+  }, [open])
 
   // Mostrar campo comentario solo si tiene texto; ocultar cuando el usuario vacía el texto
   const prevOpenRef = useRef(false)
@@ -541,6 +551,10 @@ export function PostSchedulerModal({
             <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
                 <div className="flex items-center gap-2">
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap" title={typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : ""}>
+                    <Clock className="h-3.5 w-3.5" />
+                    Tu hora: {now.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}
+                  </span>
                   <Input
                     type="datetime-local"
                     value={formData.scheduled_at}
