@@ -159,23 +159,23 @@ export function PostSchedulerModal({
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
   }
 
-  // Establecer hora por defecto SOLO al abrir el modal o al cambiar de página (nunca sobrescribir fecha manual)
-  const prevOpenAndPageRef = useRef({ open: false, pageId: "" })
+  // Establecer hora por defecto: siguiente hora :00 después del último post programado (9:50 → 10:00)
+  const prevOpenAndPageRef = useRef({ open: false, pageId: "", hadLast: false })
   useEffect(() => {
     if (!open || editingPost || !formData.page_id) return
     const didOpen = !prevOpenAndPageRef.current.open && open
     const didChangePage = prevOpenAndPageRef.current.pageId !== formData.page_id
-    prevOpenAndPageRef.current = { open, pageId: formData.page_id }
-
-    if (!didOpen && !didChangePage) return
-
     const last = lastScheduledForPage
-    if (!last?.scheduled_at) return // Solo ajustar si existe al menos un post programado para esta página
+    const lastJustLoaded = !prevOpenAndPageRef.current.hadLast && !!last?.scheduled_at
+    prevOpenAndPageRef.current = { open, pageId: formData.page_id, hadLast: !!last?.scheduled_at }
+
+    if (!didOpen && !didChangePage && !lastJustLoaded) return
+    if (!last?.scheduled_at) return // Solo si existe al menos un post programado pendiente
 
     const now = new Date()
     const lastDate = new Date(last.scheduled_at)
-    let defaultDate = new Date(lastDate.getTime() + 60 * 60 * 1000) // +1 hora
-    defaultDate.setMinutes(0, 0, 0) // redondear a XX:00 (2:01 → 3:00)
+    let defaultDate = new Date(lastDate.getTime() + 60 * 60 * 1000) // +1 hora (9:50 → 10:50)
+    defaultDate.setMinutes(0, 0, 0) // redondear a XX:00 (10:50 → 10:00)
     if (defaultDate <= now) {
       const targetHour = defaultDate.getHours()
       defaultDate = new Date(now)
