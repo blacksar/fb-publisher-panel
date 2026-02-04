@@ -181,25 +181,33 @@ export function PagesPage() {
     }
   }, [fetchMyPages, selectedSessionId])
 
-  // Sessions load
-  useEffect(() => {
-    ; (async () => {
-      try {
-        const res = await fetch('/api/list-sessions')
-        const data = await res.json()
-        if (data.status === 'ok') {
-          const formattedSessions = data.sessions.map((session: any) => ({
-            id: session.id,
-            name: session.name,
-            user_name: session.user_name,
-            status: session.status
-          }))
-          setSessions(formattedSessions)
-        }
-      } catch { }
-      finally { setSessionsLoaded(true) }
-    })()
+  // Sessions load y refetch al volver a la página (evita "Sin cuentas" tras agregar sesión)
+  const fetchSessions = useCallback(async () => {
+    try {
+      const res = await fetch('/api/list-sessions', { cache: 'no-store' })
+      const data = await res.json()
+      if (data.status === 'ok' && Array.isArray(data.sessions)) {
+        const formattedSessions = data.sessions.map((session: any) => ({
+          id: session.id,
+          name: session.name,
+          user_name: session.user_name,
+          status: session.status
+        }))
+        setSessions(formattedSessions)
+      }
+    } catch { /* silenciar */ }
+    finally { setSessionsLoaded(true) }
   }, [])
+
+  useEffect(() => {
+    void fetchSessions()
+  }, [fetchSessions])
+
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') void fetchSessions() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [fetchSessions])
 
   // Modal open logic
   useEffect(() => {
