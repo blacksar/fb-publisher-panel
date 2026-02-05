@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Calendar, FileText, MessageSquare, Settings, ChevronLeft, ChevronRight } from "lucide-react"
+import { Calendar, FileText, ImageIcon, MessageSquare, Settings, ChevronLeft, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface SidebarProps {
@@ -14,6 +14,7 @@ const menuItems = [
   { path: "/dashboard/sessions", label: "Cuentas Sociales", icon: Calendar },
   { path: "/dashboard/pages", label: "Páginas", icon: FileText },
   { path: "/dashboard/posts", label: "Publicaciones", icon: MessageSquare },
+  { path: "/dashboard/media", label: "Medios", icon: ImageIcon },
   { path: "/dashboard/settings", label: "Ajustes", icon: Settings },
 ]
 

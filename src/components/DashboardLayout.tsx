@@ -15,6 +15,7 @@ const titleMap: Record<string, string> = {
   "/dashboard/sessions": "Cuentas Sociales",
   "/dashboard/pages": "Páginas",
   "/dashboard/posts": "Publicaciones",
+  "/dashboard/media": "Medios",
   "/dashboard/settings": "Ajustes",
 }
 
