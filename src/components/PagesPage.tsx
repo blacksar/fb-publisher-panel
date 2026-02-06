@@ -203,6 +203,13 @@ export function PagesPage() {
     void fetchSessions()
   }, [fetchSessions])
 
+  // Reintento único si llegamos con 0 sesiones (por si acabas de agregar una y navegaste rápido)
+  useEffect(() => {
+    if (!sessionsLoaded || sessions.length > 0) return
+    const t = setTimeout(() => void fetchSessions(), 800)
+    return () => clearTimeout(t)
+  }, [sessionsLoaded, sessions.length, fetchSessions])
+
   useEffect(() => {
     const onVisible = () => { if (document.visibilityState === 'visible') void fetchSessions() }
     document.addEventListener('visibilitychange', onVisible)
@@ -319,8 +326,14 @@ export function PagesPage() {
         <Alert className="bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Sin cuentas</AlertTitle>
-          <AlertDescription>
-            No hay sesiones configuradas. Ve a <strong>Cuentas Sociales</strong> y agrega una cuenta de Facebook para ver tus páginas.
+          <AlertDescription className="flex flex-col gap-3">
+            <span>
+              No hay sesiones configuradas. Ve a <strong>Cuentas Sociales</strong> y agrega una cuenta de Facebook para ver tus páginas.
+            </span>
+            <Button variant="outline" size="sm" className="w-fit" onClick={() => void fetchSessions()}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refrescar lista de cuentas
+            </Button>
           </AlertDescription>
         </Alert>
       )}
