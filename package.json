@@ -8,10 +8,10 @@
     "truncate-db": "node scripts/truncate-db.mjs",
     "clear-api-url": "node scripts/clear-api-url.mjs",
     "clean": "node scripts/clean-next.mjs",
-    "dev": "npm run init-db && prisma migrate deploy && next dev",
+    "dev": "npm run init-db && prisma generate && prisma migrate deploy && next dev",
     "dev:fresh": "npm run clean && npm run dev",
     "build": "next build",
-    "start": "npm run init-db && prisma migrate deploy && next start",
+    "start": "npm run init-db && prisma generate && prisma migrate deploy && next start",
     "start:app": "next start",
     "lint": "next lint",
     "cron": "node --loader ts-node/esm ./scripts/cron.ts"

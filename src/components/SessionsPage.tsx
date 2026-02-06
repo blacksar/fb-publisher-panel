@@ -15,7 +15,7 @@ import {
   type Row,
   type Column,
 } from "@tanstack/react-table"
-import { Plus, Eye, Trash2, MoreHorizontal, ArrowUpDown, Edit, CheckCircle, Cookie, LogIn, ArrowLeft, Loader2, Check } from "lucide-react"
+import { Plus, Eye, Trash2, MoreHorizontal, ArrowUpDown, Edit, CheckCircle, Loader2, Check } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -44,7 +44,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { getSessions, createSession, updateSession, deleteSession, verifySession } from "@/app/actions"
+import { getSessions, updateSession, deleteSession, verifySession } from "@/app/actions"
 import axios from "axios"
 import { showToast } from "@/lib/toast-config"
 
@@ -88,7 +88,6 @@ export function SessionsPage() {
 
   // Dialog states
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
-  const [createModalMode, setCreateModalMode] = useState<"choice" | "cookies" | "login">("choice")
   const [loginForm, setLoginForm] = useState({ email: "", password: "", wait2faSeconds: 120 })
   const [loginLoading, setLoginLoading] = useState(false)
   const [loginStatus, setLoginStatus] = useState<"idle" | "awaiting_2fa" | "success">("idle")
@@ -99,12 +98,6 @@ export function SessionsPage() {
   const [deleteMultipleDialogOpen, setDeleteMultipleDialogOpen] = useState(false)
   const [currentSession, setCurrentSession] = useState<Session | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-
-  // Form states
-  const [newSession, setNewSession] = useState({
-    name: "",
-    cookie: "",
-  })
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -124,39 +117,6 @@ export function SessionsPage() {
       void fetchSessions()
     }
   }, [mounted, fetchSessions])
-
-  const handleCreateSession = async () => {
-    if (!newSession.name.trim() || !newSession.cookie.trim()) {
-      showToast.error("Por favor complete todos los campos")
-      return
-    }
-
-    try {
-      JSON.parse(newSession.cookie)
-    } catch (error) {
-      showToast.error("La cookie debe ser un JSON válido")
-      return
-    }
-
-    try {
-      const session = await createSession({
-        name: newSession.name,
-        cookie: newSession.cookie,
-        status: "pending"
-      })
-
-      setNewSession({ name: "", cookie: "" })
-      setCreateDialogOpen(false)
-      setCreateModalMode("choice")
-      fetchSessions()
-      if (typeof window !== "undefined") {
-        localStorage.setItem("selectedSessionId", session.id.toString())
-      }
-      showToast.success("Sesión creada exitosamente")
-    } catch (error) {
-      showToast.error("Error al crear la sesión")
-    }
-  }
 
   const handleLoginWithCredentials = async () => {
     if (!loginForm.email.trim() || !loginForm.password.trim()) {
@@ -196,7 +156,6 @@ export function SessionsPage() {
               showToast.success("¡Cuenta conectada exitosamente!")
               setTimeout(() => {
                 setCreateDialogOpen(false)
-                setCreateModalMode("choice")
                 setLoginStatus("idle")
                 setLoginForm({ email: "", password: "", wait2faSeconds: 120 })
               }, 1500)
@@ -208,13 +167,12 @@ export function SessionsPage() {
             clearInterval(pollIntervalRef.current)
             pollIntervalRef.current = null
             setLoginStatus("idle")
-            showToast.error("Tiempo agotado. Intenta de nuevo o agrega la cuenta con cookies.")
+            showToast.error("Tiempo agotado. Intenta de nuevo.")
           }
         }, 2500)
       } else if (response.data.status === "ok") {
         setLoginForm({ email: "", password: "", wait2faSeconds: 120 })
         setCreateDialogOpen(false)
-        setCreateModalMode("choice")
         fetchSessions()
         if (response.data?.session?.id && typeof window !== "undefined") {
           localStorage.setItem("selectedSessionId", response.data.session.id.toString())
@@ -242,7 +200,6 @@ export function SessionsPage() {
         clearInterval(pollIntervalRef.current)
         pollIntervalRef.current = null
       }
-      setCreateModalMode("choice")
       setLoginForm({ email: "", password: "", wait2faSeconds: 120 })
       setLoginStatus("idle")
     }
@@ -568,102 +525,12 @@ export function SessionsPage() {
                 </DialogTrigger>
                 <DialogContent className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 max-w-2xl">
                   <DialogHeader>
-                    <DialogTitle className="text-gray-900 dark:text-white flex items-center gap-2">
-                      {createModalMode !== "choice" && loginStatus === "idle" && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 -ml-2"
-                          onClick={() => setCreateModalMode("choice")}
-                        >
-                          <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                      )}
+                    <DialogTitle className="text-gray-900 dark:text-white">
                       Conectar Nueva Cuenta
                     </DialogTitle>
                   </DialogHeader>
 
-                  {createModalMode === "choice" && (
-                    <div className="space-y-4 py-4">
-                      <p className="text-gray-600 dark:text-gray-400 text-sm">
-                        Elige cómo deseas agregar tu cuenta de Facebook:
-                      </p>
-                      <div className="grid gap-3">
-                        <Button
-                          variant="outline"
-                          className="h-auto py-4 justify-start gap-3 border-gray-200 dark:border-gray-700"
-                          onClick={() => setCreateModalMode("cookies")}
-                        >
-                          <Cookie className="h-5 w-5 shrink-0" />
-                          <div className="text-left">
-                            <div className="font-medium">Agregar con cookies</div>
-                            <div className="text-sm text-gray-500 dark:text-gray-400">
-                              Pega las cookies de tu sesión de Facebook manualmente
-                            </div>
-                          </div>
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className="h-auto py-4 justify-start gap-3 border-gray-200 dark:border-gray-700"
-                          onClick={() => setCreateModalMode("login")}
-                        >
-                          <LogIn className="h-5 w-5 shrink-0" />
-                          <div className="text-left">
-                            <div className="font-medium">Iniciar sesión con usuario y contraseña</div>
-                            <div className="text-sm text-gray-500 dark:text-gray-400">
-                              Ingresa tu email/usuario y contraseña de Facebook
-                            </div>
-                          </div>
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {createModalMode === "cookies" && (
-                    <>
-                      <div className="space-y-4">
-                        <div>
-                          <Label htmlFor="session-name" className="text-gray-900 dark:text-white block mb-2">
-                            Nombre de la Cuenta
-                          </Label>
-                          <Input
-                            id="session-name"
-                            value={newSession.name}
-                            onChange={(e) => setNewSession({ ...newSession, name: e.target.value })}
-                            placeholder="Ej: Cuenta Principal"
-                            className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="session-cookie" className="text-gray-900 dark:text-white block mb-2">
-                            Cookie (JSON)
-                          </Label>
-                          <Textarea
-                            id="session-cookie"
-                            value={newSession.cookie}
-                            onChange={(e) => setNewSession({ ...newSession, cookie: e.target.value })}
-                            placeholder='{"c_user":"123456789","xs":"74%3AypHYvUjlcJKvgw%3A2%3A1640995200%3A-1%3A-1","fr":"0ZvhZQqxOe01mZQ1V..."}'
-                            rows={6}
-                            className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 font-mono text-sm"
-                          />
-                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                            Pegue aquí la cookie en formato JSON
-                          </p>
-                        </div>
-                      </div>
-                      <DialogFooter>
-                        <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
-                          Cancelar
-                        </Button>
-                        <Button onClick={handleCreateSession} className="bg-[#2563eb] hover:bg-[#1d4ed8]">
-                          Conectar Cuenta
-                        </Button>
-                      </DialogFooter>
-                    </>
-                  )}
-
-                  {createModalMode === "login" && (
-                    <>
+                  <>
                       {loginStatus === "awaiting_2fa" && (
                         <div className="py-8 px-4 text-center space-y-6">
                           <Loader2 className="h-14 w-14 animate-spin text-blue-600 mx-auto" />
@@ -774,7 +641,6 @@ export function SessionsPage() {
                         </>
                       )}
                     </>
-                  )}
                 </DialogContent>
               </Dialog>
             </div>

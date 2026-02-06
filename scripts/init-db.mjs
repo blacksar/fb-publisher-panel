@@ -30,7 +30,7 @@ async function loadEnv() {
 
 async function main() {
     await loadEnv()
-    const databaseUrl = process.env.DATABASE_URL
+    let databaseUrl = (process.env.DATABASE_URL || '').replace(/^["'\s]+|["'\s]+$/g, '')
     if (!databaseUrl) {
         console.error('❌ DATABASE_URL no está definida. Configúrala en .env')
         process.exit(1)
@@ -40,7 +40,7 @@ async function main() {
     let dbName
     try {
         const url = new URL(databaseUrl.replace(/^mysql:/, 'http:'))
-        dbName = (url.pathname || '/').replace(/^\/+|\/+$/g, '').split('?')[0]
+        dbName = decodeURIComponent((url.pathname || '/').replace(/^\/+|\/+$/g, '').split('?')[0]).replace(/["']+$/g, '').replace(/^["']+/g, '')
         if (!dbName) {
             console.error('❌ No se encontró nombre de base de datos en DATABASE_URL.')
             process.exit(1)
