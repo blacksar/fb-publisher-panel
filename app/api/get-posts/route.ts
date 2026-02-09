@@ -9,38 +9,51 @@ export async function POST(request: Request) {
   const effectiveUserId = getEffectiveUserId(authResult)
 
   try {
-    const { sessionId, trash } = await request.json().catch(() => ({}))
+    const body = await request.json().catch(() => ({}))
+    const { sessionId, trash, limit: rawLimit, offset: rawOffset, status } = body
+    const limit = Math.min(100, Math.max(1, parseInt(String(rawLimit), 10) || 20))
+    const offset = Math.max(0, parseInt(String(rawOffset), 10) || 0)
+
     const baseWhere = authResult.user.role === "ADMIN" && !authResult.impersonationUserId
       ? {}
       : { userId: effectiveUserId }
-    let where = baseWhere as { session_id?: number; userId?: string; deleted_at?: null | { not: null } }
+    let where = baseWhere as { session_id?: number; userId?: string; deleted_at?: null | { not: null }; status?: string }
     if (sessionId) where = { ...where, session_id: sessionId }
     if (trash === true) {
       where.deleted_at = { not: null }
     } else {
       where.deleted_at = null
     }
-    const posts = await prisma.post.findMany({
-      where,
-      orderBy: trash === true ? { deleted_at: "desc" } : { created_at: "desc" },
-      select: {
-        id: true,
-        title: true,
-        content: true,
-        status: true,
-        scheduled_at: true,
-        published_at: true,
-        image_url: true,
-        page_name: true,
-        page_id: true,
-        fb_post_id: true,
-        created_at: true,
-        session_id: true,
-        userId: true,
-        error_log: true,
-        deleted_at: true,
-      },
-    })
+    if (status && ["published", "draft", "scheduled", "pending", "failed"].includes(status)) {
+      where.status = status
+    }
+
+    const [total, posts] = await Promise.all([
+      prisma.post.count({ where }),
+      prisma.post.findMany({
+        where,
+        orderBy: trash === true ? { deleted_at: "desc" } : { created_at: "desc" },
+        take: limit,
+        skip: offset,
+        select: {
+          id: true,
+          title: true,
+          content: true,
+          status: true,
+          scheduled_at: true,
+          published_at: true,
+          image_url: true,
+          page_name: true,
+          page_id: true,
+          fb_post_id: true,
+          created_at: true,
+          session_id: true,
+          userId: true,
+          error_log: true,
+          deleted_at: true,
+        },
+      }),
+    ])
 
     // Enriquecer posts con nombres de página si faltan
     const postsWithNames = await Promise.all(posts.map(async (p: any) => {
@@ -53,7 +66,7 @@ export async function POST(request: Request) {
       return p
     }))
 
-    return NextResponse.json({ status: "ok", posts: postsWithNames })
+    return NextResponse.json({ status: "ok", posts: postsWithNames, total })
   } catch (err: any) {
     return NextResponse.json({ status: "error", mensaje: err.message || "Error" }, { status: 500 })
   }

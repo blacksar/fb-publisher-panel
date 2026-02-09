@@ -47,6 +47,9 @@ const POSTS_COLUMN_LABELS: Record<string, string> = {
   actions: "Acciones",
 }
 const STORAGE_KEY_SORT_ORDER = "posts-page-sort-order"
+const POSTS_PAGE_SIZE = 20
+const TAB_IDS = ["published", "draft", "scheduled", "pending", "failed", "trash"] as const
+type TabId = (typeof TAB_IDS)[number]
 
 interface Post {
   id: number
@@ -168,27 +171,59 @@ async function getCachedPages(): Promise<Page[]> {
   }
 }
 
-async function fetchPostsFromServer(trash = false): Promise<Post[]> {
+async function fetchPostsPage(
+  tab: TabId,
+  offset: number,
+  append: boolean,
+  sessionId: number | null
+): Promise<{ posts: Post[]; total: number }> {
+  const payload: Record<string, unknown> = {
+    trash: tab === "trash",
+    limit: POSTS_PAGE_SIZE,
+    offset,
+  }
+  if (sessionId != null) payload.sessionId = sessionId
+  if (tab !== "trash") payload.status = tab
+  const res = await fetch("/api/get-posts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  })
+  const data = await res.json()
+  if (data.status === "ok") return { posts: (data.posts || []) as Post[], total: data.total ?? 0 }
+  return { posts: [], total: 0 }
+}
+
+async function fetchPostsCounts(sessionId: number | null): Promise<Record<TabId, number>> {
   try {
-    const sessionIdStr = typeof window !== "undefined" ? localStorage.getItem("selectedSessionId") : null
-    const payload = sessionIdStr ? { sessionId: parseInt(sessionIdStr, 10), trash } : { trash }
-    const res = await fetch("/api/get-posts", {
+    const res = await fetch("/api/get-posts-count", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(sessionId != null ? { sessionId } : {}),
       cache: "no-store",
     })
     const data = await res.json()
-    if (data.status === "ok") return data.posts as Post[]
-    return []
-  } catch {
-    return []
-  }
+    if (data.status === "ok" && data.counts) return data.counts as Record<TabId, number>
+  } catch (_) {}
+  return { published: 0, draft: 0, scheduled: 0, pending: 0, failed: 0, trash: 0 }
 }
 
+const initialTabState = (): Record<TabId, Post[]> =>
+  ({ published: [], draft: [], scheduled: [], pending: [], failed: [], trash: [] })
+const initialOffsets = (): Record<TabId, number> =>
+  ({ published: 0, draft: 0, scheduled: 0, pending: 0, failed: 0, trash: 0 })
+const initialBools = (): Record<TabId, boolean> =>
+  ({ published: true, draft: true, scheduled: true, pending: true, failed: true, trash: true })
+
 export function PostsPage() {
-  const [posts, setPosts] = useState<Post[]>([])
-  const [trashPosts, setTrashPosts] = useState<Post[]>([])
+  const [postsByTab, setPostsByTab] = useState<Record<TabId, Post[]>>(initialTabState)
+  const [offsetByTab, setOffsetByTab] = useState<Record<TabId, number>>(initialOffsets)
+  const [hasMoreByTab, setHasMoreByTab] = useState<Record<TabId, boolean>>(() => ({ published: true, draft: true, scheduled: true, pending: true, failed: true, trash: true }))
+  const [loadingTab, setLoadingTab] = useState<Record<TabId, boolean>>(initialBools)
+  const [loadingMoreTab, setLoadingMoreTab] = useState<Record<TabId, boolean>>(() => ({ published: false, draft: false, scheduled: false, pending: false, failed: false, trash: false }))
+  const [counts, setCounts] = useState<Record<TabId, number>>(() => ({ published: 0, draft: 0, scheduled: 0, pending: 0, failed: 0, trash: 0 }))
+  const sentinelRef = useRef<HTMLTableRowElement>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingPost, setEditingPost] = useState<Post | null>(null)
   const [postToPublish, setPostToPublish] = useState<Post | null>(null)
@@ -346,24 +381,47 @@ export function PostsPage() {
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [fetchSessions])
 
-  // Refetch posts al abrir el modal para tener datos frescos de la BD (última programación correcta)
+  const sessionIdNum = selectedSessionId ? parseInt(selectedSessionId, 10) : null
+
+  const loadPageForTab = useCallback(async (tab: TabId, append: boolean) => {
+    const off = append ? offsetByTab[tab] : 0
+    if (!append) {
+      setLoadingTab((prev) => ({ ...prev, [tab]: true }))
+      setPostsByTab((prev) => ({ ...prev, [tab]: [] }))
+      setOffsetByTab((prev) => ({ ...prev, [tab]: 0 }))
+      setHasMoreByTab((prev) => ({ ...prev, [tab]: true }))
+    } else {
+      setLoadingMoreTab((prev) => ({ ...prev, [tab]: true }))
+    }
+    const { posts: list, total } = await fetchPostsPage(tab, off, append, sessionIdNum)
+    setLoadingTab((prev) => ({ ...prev, [tab]: false }))
+    setLoadingMoreTab((prev) => ({ ...prev, [tab]: false }))
+    setPostsByTab((prev) => ({ ...prev, [tab]: append ? [...prev[tab], ...list] : list }))
+    setOffsetByTab((prev) => ({ ...prev, [tab]: off + list.length }))
+    setHasMoreByTab((prev) => ({ ...prev, [tab]: off + list.length < total }))
+  }, [sessionIdNum, offsetByTab])
+
+  const refreshCounts = useCallback(async () => {
+    const c = await fetchPostsCounts(sessionIdNum)
+    setCounts(c)
+  }, [sessionIdNum])
+
   useEffect(() => {
     if (!isModalOpen || !selectedSessionId) return
-    fetchPostsFromServer().then((p) => {
-      if (Array.isArray(p)) setPosts(p)
-    })
+    refreshCounts()
+    loadPageForTab(activeTab as TabId, false)
   }, [isModalOpen])
 
-  // whenever session changes, load pages & posts
+  // whenever session changes, load pages & counts; load first page for active tab
   useEffect(() => {
     ; (async () => {
       if (!selectedSessionId) {
-        setPosts([])
+        setPostsByTab(initialTabState())
+        setCounts(() => ({ published: 0, draft: 0, scheduled: 0, pending: 0, failed: 0, trash: 0 }))
         return
       }
       if (typeof window !== 'undefined') localStorage.setItem('selectedSessionId', selectedSessionId)
 
-      // fetch pages
       try {
         const res = await fetch('/api/get-pages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: parseInt(selectedSessionId, 10) }) })
         const data = await res.json()
@@ -384,28 +442,38 @@ export function PostsPage() {
         setPagesList([])
       }
 
-      // fetch posts (sin papelera)
-      try {
-        const p = await fetchPostsFromServer(false)
-        setPosts(Array.isArray(p) ? p : [])
-      } catch {
-        setPosts([])
-      }
-      try {
-        const t = await fetchPostsFromServer(true)
-        setTrashPosts(Array.isArray(t) ? t : [])
-      } catch {
-        setTrashPosts([])
-      }
+      const c = await fetchPostsCounts(parseInt(selectedSessionId, 10))
+      setCounts(c)
+      setPostsByTab(initialTabState())
+      setOffsetByTab(initialOffsets())
+      setHasMoreByTab(() => ({ published: true, draft: true, scheduled: true, pending: true, failed: true, trash: true }))
+      loadPageForTab(activeTab as TabId, false)
     })()
   }, [selectedSessionId])
 
-  // Al abrir pestaña Papelera, recargar papelera
   useEffect(() => {
-    if (activeTab === "trash") {
-      fetchPostsFromServer(true).then((t) => setTrashPosts(Array.isArray(t) ? t : []))
+    if (!selectedSessionId) return
+    const tab = activeTab as TabId
+    if (postsByTab[tab].length === 0 && !loadingTab[tab] && !loadingMoreTab[tab]) {
+      loadPageForTab(tab, false)
     }
-  }, [activeTab])
+  }, [activeTab, selectedSessionId])
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel || !selectedSessionId) return
+    const tab = activeTab as TabId
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return
+        if (!hasMoreByTab[tab] || loadingMoreTab[tab]) return
+        loadPageForTab(tab, true)
+      },
+      { rootMargin: "200px", threshold: 0 }
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [activeTab, hasMoreByTab, loadingMoreTab, loadPageForTab, selectedSessionId])
 
   const handleSubmit = async (action: "publish" | "draft" | "schedule" = "publish") => {
     if (isSubmitting) return
@@ -478,16 +546,27 @@ export function PostsPage() {
               : "Publicación exitosa"
 
         if (editingPost) {
-          // Actualizar post existente en la lista
-          setPosts((prev) => prev.map(p => p.id === editingPost.id ? (data.post as Post) : p))
+          const updated = data.post as Post
+          setPostsByTab((prev) => {
+            const next = { ...prev }
+            for (const k of TAB_IDS) {
+              const idx = next[k].findIndex((p) => p.id === editingPost.id)
+              if (idx >= 0) {
+                next[k] = next[k].slice()
+                next[k][idx] = updated
+                break
+              }
+            }
+            return next
+          })
+          refreshCounts()
           if (postStatus === 'pending') toast.warning(message)
           else toast.success(message)
         } else {
-          // Agregar nuevo post
-          setPosts((prev) => [
-            data.post as Post,
-            ...prev,
-          ])
+          const newPost = data.post as Post
+          const tab = (newPost.status === "published" ? "published" : newPost.status === "draft" ? "draft" : newPost.status === "scheduled" ? "scheduled" : newPost.status === "pending" ? "pending" : "failed") as TabId
+          setPostsByTab((prev) => ({ ...prev, [tab]: [newPost, ...prev[tab]] }))
+          refreshCounts()
           if (postStatus === 'pending') toast.warning(successMessage)
           else toast.success(successMessage)
         }
@@ -538,9 +617,23 @@ export function PostsPage() {
       })
       const data = await res.json()
       if (data.status === "ok") {
-        setPosts(prev => prev.filter(p => p.id !== post.id))
-        const t = await fetchPostsFromServer(true)
-        setTrashPosts(Array.isArray(t) ? t : [])
+        let moved: Post | undefined
+        setPostsByTab((prev) => {
+          const next = { ...prev }
+          for (const k of TAB_IDS) {
+            if (k === "trash") continue
+            const idx = next[k].findIndex((p) => p.id === post.id)
+            if (idx >= 0) {
+              moved = next[k][idx]
+              next[k] = next[k].filter((p) => p.id !== post.id)
+              break
+            }
+          }
+          if (moved) next.trash = [...next.trash, { ...moved, deleted_at: new Date() }]
+          return next
+        })
+        refreshCounts()
+        if (activeTab === "trash") loadPageForTab("trash", false)
         toast.success("Movido a papelera")
       } else {
         toast.error(data.mensaje || "Error al mover a papelera")
@@ -559,9 +652,17 @@ export function PostsPage() {
       })
       const data = await res.json()
       if (data.status === "ok") {
-        setTrashPosts(prev => prev.filter(p => p.id !== post.id))
-        const p = await fetchPostsFromServer(false)
-        setPosts(Array.isArray(p) ? p : [])
+        let restored: Post | undefined
+        setPostsByTab((prev) => {
+          const idx = prev.trash.findIndex((p) => p.id === post.id)
+          if (idx < 0) return prev
+          restored = prev.trash[idx]
+          const next = { ...prev, trash: prev.trash.filter((p) => p.id !== post.id) }
+          const tab = (restored.status === "published" ? "published" : restored.status === "draft" ? "draft" : restored.status === "scheduled" ? "scheduled" : restored.status === "pending" ? "pending" : "failed") as TabId
+          next[tab] = [{ ...restored, deleted_at: undefined }, ...next[tab]]
+          return next
+        })
+        refreshCounts()
         toast.success("Restaurado")
       } else {
         toast.error(data.mensaje || "Error al restaurar")
@@ -581,7 +682,8 @@ export function PostsPage() {
       })
       const data = await res.json()
       if (data.status === "ok") {
-        setTrashPosts(prev => prev.filter(p => p.id !== post.id))
+        setPostsByTab((prev) => ({ ...prev, trash: prev.trash.filter((p) => p.id !== post.id) }))
+        refreshCounts()
         toast.success("Eliminado permanentemente")
       } else {
         toast.error(data.mensaje || "Error al eliminar")
@@ -608,8 +710,13 @@ export function PostsPage() {
       })
       const data = await res.json()
       if (data.status === "ok") {
-        // Actualizar el post en la lista
-        setPosts(prev => prev.map(p => p.id === post.id ? data.post : p))
+        const published = data.post as Post
+        setPostsByTab((prev) => ({
+          ...prev,
+          draft: prev.draft.filter((p) => p.id !== post.id),
+          published: [published, ...prev.published],
+        }))
+        refreshCounts()
         toast.success("Publicado exitosamente")
       } else {
         toast.error(data.mensaje || "Error al publicar")
@@ -791,7 +898,7 @@ export function PostsPage() {
           isSessionInactive={!!buttonsDisabled}
           noPagesSelected={!!selectedSessionId && pagesList.length === 0}
           editingPost={editingPost}
-          postsWithScheduled={posts.map((p) => ({ page_id: p.page_id, scheduled_at: p.scheduled_at, status: p.status }))}
+          postsWithScheduled={postsByTab.scheduled.map((p) => ({ page_id: p.page_id, scheduled_at: p.scheduled_at, status: p.status }))}
           onClear={() => {
             setFormData((prev) => ({ ...prev, title: "", content: "", comment: "", images: [] }))
           }}
@@ -857,18 +964,12 @@ export function PostsPage() {
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="grid w-full grid-cols-6">
-              <TabsTrigger value="published">
-                Publicados ({posts.filter((p) => p.status === "published").length})
-              </TabsTrigger>
-              <TabsTrigger value="draft">Borradores ({posts.filter((p) => p.status === "draft").length})</TabsTrigger>
-              <TabsTrigger value="scheduled">
-                Programados ({posts.filter((p) => p.status === "scheduled").length})
-              </TabsTrigger>
-              <TabsTrigger value="pending">
-                Pendientes ({posts.filter((p) => p.status === "pending").length})
-              </TabsTrigger>
-              <TabsTrigger value="failed">Fallidos ({posts.filter((p) => p.status === "failed").length})</TabsTrigger>
-              <TabsTrigger value="trash">Papelera ({trashPosts.length})</TabsTrigger>
+              <TabsTrigger value="published">Publicados ({counts.published})</TabsTrigger>
+              <TabsTrigger value="draft">Borradores ({counts.draft})</TabsTrigger>
+              <TabsTrigger value="scheduled">Programados ({counts.scheduled})</TabsTrigger>
+              <TabsTrigger value="pending">Pendientes ({counts.pending})</TabsTrigger>
+              <TabsTrigger value="failed">Fallidos ({counts.failed})</TabsTrigger>
+              <TabsTrigger value="trash">Papelera ({counts.trash})</TabsTrigger>
             </TabsList>
 
             {["published", "draft", "scheduled", "pending", "failed"].map((status) => (
@@ -898,29 +999,36 @@ export function PostsPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {posts.filter((post) => post.status === status).length > 0 ? (
-                        sortPostsByDate(posts.filter((post) => post.status === status), sortOrder).map((post: Post) => (
-                          <TableRow key={post.id} className="border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                            {POSTS_COLUMN_IDS.map((colId) => (
-                              <TableCell key={colId} className={colId === "page" ? "font-medium text-gray-900 dark:text-gray-100" : undefined}>
-                                {renderPostCell(colId, post, status)}
-                              </TableCell>
-                            ))}
-                            {status === "failed" && (
-                              <TableCell>
-                                {post.error_log && (
-                                  <Button variant="ghost" size="sm" onClick={() => setErrorLogPost(post)} className="text-red-500 hover:text-red-700 hover:bg-red-50">
-                                    <AlertTriangle className="w-4 h-4 mr-1" /> Ver Error
-                                  </Button>
-                                )}
-                              </TableCell>
-                            )}
-                          </TableRow>
-                        ))
+                      {postsByTab[status].length > 0 ? (
+                        <>
+                          {sortPostsByDate(postsByTab[status], sortOrder).map((post: Post) => (
+                            <TableRow key={post.id} className="border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                              {POSTS_COLUMN_IDS.map((colId) => (
+                                <TableCell key={colId} className={colId === "page" ? "font-medium text-gray-900 dark:text-gray-100" : undefined}>
+                                  {renderPostCell(colId, post, status)}
+                                </TableCell>
+                              ))}
+                              {status === "failed" && (
+                                <TableCell>
+                                  {post.error_log && (
+                                    <Button variant="ghost" size="sm" onClick={() => setErrorLogPost(post)} className="text-red-500 hover:text-red-700 hover:bg-red-50">
+                                      <AlertTriangle className="w-4 h-4 mr-1" /> Ver Error
+                                    </Button>
+                                  )}
+                                </TableCell>
+                              )}
+                            </TableRow>
+                          ))}
+                          {activeTab === status && (
+                            <TableRow ref={sentinelRef}>
+                              <TableCell colSpan={POSTS_COLUMN_IDS.length + (status === "failed" ? 1 : 0)} className="h-2 p-0" aria-hidden />
+                            </TableRow>
+                          )}
+                        </>
                       ) : (
                         <TableRow>
                           <TableCell colSpan={POSTS_COLUMN_IDS.length + (status === "failed" ? 1 : 0)} className="h-24 text-center text-gray-500 dark:text-gray-400">
-                            No hay publicaciones en esta categoría.
+                            {loadingTab[status] ? "Cargando…" : "No hay publicaciones en esta categoría."}
                           </TableCell>
                         </TableRow>
                       )}
@@ -955,20 +1063,27 @@ export function PostsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {trashPosts.length > 0 ? (
-                      sortPostsByDate(trashPosts, sortOrder, true).map((post: Post) => (
-                        <TableRow key={post.id} className="border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                          {POSTS_COLUMN_IDS.map((colId) => (
-                            <TableCell key={colId} className={colId === "page" ? "font-medium text-gray-900 dark:text-gray-100" : undefined}>
-                              {renderPostCell(colId, post, post.status, true)}
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      ))
+                    {postsByTab.trash.length > 0 ? (
+                      <>
+                        {sortPostsByDate(postsByTab.trash, sortOrder, true).map((post: Post) => (
+                          <TableRow key={post.id} className="border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                            {POSTS_COLUMN_IDS.map((colId) => (
+                              <TableCell key={colId} className={colId === "page" ? "font-medium text-gray-900 dark:text-gray-100" : undefined}>
+                                {renderPostCell(colId, post, post.status, true)}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        ))}
+                        {activeTab === "trash" && (
+                          <TableRow ref={sentinelRef}>
+                            <TableCell colSpan={POSTS_COLUMN_IDS.length} className="h-2 p-0" aria-hidden />
+                          </TableRow>
+                        )}
+                      </>
                     ) : (
                       <TableRow>
                         <TableCell colSpan={POSTS_COLUMN_IDS.length} className="h-24 text-center text-gray-500 dark:text-gray-400">
-                          No hay nada en la papelera.
+                          {loadingTab.trash ? "Cargando…" : "No hay nada en la papelera."}
                         </TableCell>
                       </TableRow>
                     )}

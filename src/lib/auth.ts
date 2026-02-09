@@ -36,8 +36,8 @@ export function getEffectiveUserId(auth: { user: AuthUser; impersonationUserId?:
   return auth.user.id
 }
 
-/** Crea el JWT para la sesión */
-async function signToken(payload: AuthPayload): Promise<string> {
+/** Crea el JWT para la sesión (exportado para login que devuelve token a clientes API) */
+export async function createSessionToken(payload: AuthPayload): Promise<string> {
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: "HS256" })
     .setExpirationTime("7d")
@@ -61,12 +61,16 @@ async function verifyToken(token: string): Promise<AuthPayload | null> {
   }
 }
 
-/** Lee la cookie de sesión de la request (API Route) */
+/** Lee el token de sesión: primero cookie panel_session, luego Authorization: Bearer (para clientes API, ej. Python) */
 function getTokenFromRequest(request: Request): string | null {
   const cookieHeader = request.headers.get("cookie")
-  if (!cookieHeader) return null
-  const match = cookieHeader.match(new RegExp(`${COOKIE_NAME}=([^;]+)`))
-  return match ? decodeURIComponent(match[1]) : null
+  if (cookieHeader) {
+    const match = cookieHeader.match(new RegExp(`${COOKIE_NAME}=([^;]+)`))
+    if (match) return decodeURIComponent(match[1])
+  }
+  const auth = request.headers.get("authorization")
+  if (auth?.startsWith("Bearer ")) return auth.slice(7).trim() || null
+  return null
 }
 
 /** Obtiene la sesión desde la request. Usar en API Routes. */
@@ -86,7 +90,7 @@ const COOKIE_OPTIONS = {
 
 /** Establece la cookie de sesión en la respuesta (para login). Preferir usar en la respuesta que devuelves. */
 export async function setAuthCookie(payload: AuthPayload): Promise<void> {
-  const token = await signToken(payload)
+  const token = await createSessionToken(payload)
   const cookieStore = await cookies()
   cookieStore.set(COOKIE_NAME, token, COOKIE_OPTIONS)
 }
@@ -96,7 +100,7 @@ export async function setAuthCookieOnResponse<T>(
   response: NextResponse<T>,
   payload: AuthPayload
 ): Promise<NextResponse<T>> {
-  const token = await signToken(payload)
+  const token = await createSessionToken(payload)
   response.cookies.set(COOKIE_NAME, token, COOKIE_OPTIONS)
   return response
 }

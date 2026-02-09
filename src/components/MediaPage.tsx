@@ -26,6 +26,8 @@ import {
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
+const PAGE_SIZE = 24
+
 interface MediaItem {
   name: string
   path: string
@@ -41,35 +43,81 @@ function formatSize(bytes: number): string {
 
 export function MediaPage() {
   const [items, setItems] = useState<MediaItem[]>([])
+  const [total, setTotal] = useState(0)
+  const [offset, setOffset] = useState(0)
+  const [hasMore, setHasMore] = useState(true)
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [searchInput, setSearchInput] = useState("")
   const [searchTerm, setSearchTerm] = useState("")
   const [deleteTarget, setDeleteTarget] = useState<MediaItem | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const sentinelRef = useRef<HTMLDivElement>(null)
 
-  const fetchMedia = useCallback(async () => {
+  const loadPage = useCallback(async (off: number, append: boolean, search: string) => {
+    const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(off) })
+    if (search) params.set("q", search)
     try {
-      setLoading(true)
-      const res = await fetch("/api/media/list", { cache: "no-store" })
+      const res = await fetch(`/api/media/list?${params}`, { cache: "no-store" })
       const data = await res.json()
-      if (data.status === "ok") setItems(data.items || [])
-      else toast.error(data.mensaje || "Error al cargar")
+      if (data.status !== "ok") {
+        toast.error(data.mensaje || "Error al cargar")
+        return
+      }
+      const list = data.items || []
+      const totalCount = typeof data.total === "number" ? data.total : list.length
+      setTotal(totalCount)
+      setHasMore(off + list.length < totalCount)
+      setOffset(off + list.length)
+      setItems((prev) => (append ? [...prev, ...list] : list))
     } catch {
       toast.error("Error al cargar medios")
     } finally {
       setLoading(false)
+      setLoadingMore(false)
     }
   }, [])
 
-  useEffect(() => {
-    void fetchMedia()
-  }, [fetchMedia])
+  const fetchMedia = useCallback(() => {
+    setLoading(true)
+    setOffset(0)
+    setHasMore(true)
+    loadPage(0, false, searchTerm)
+  }, [loadPage, searchTerm])
 
-  const filteredItems = items.filter((item) =>
-    item.name.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const loadMore = useCallback(() => {
+    if (loadingMore || !hasMore) return
+    setLoadingMore(true)
+    loadPage(offset, true, searchTerm)
+  }, [loadingMore, hasMore, offset, loadPage, searchTerm])
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearchTerm(searchInput), 400)
+    return () => clearTimeout(t)
+  }, [searchInput])
+
+  useEffect(() => {
+    setLoading(true)
+    setOffset(0)
+    setHasMore(true)
+    loadPage(0, false, searchTerm)
+  }, [searchTerm, loadPage])
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMore()
+      },
+      { rootMargin: "200px", threshold: 0 }
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [loadMore])
 
   const handleUpload = async (files: FileList | null) => {
     if (!files?.length) return
@@ -86,7 +134,10 @@ export function MediaPage() {
       const data = await res.json()
       if (data.status === "ok") {
         toast.success(`${data.uploaded?.length || 0} archivo(s) subido(s)`)
-        void fetchMedia()
+        setLoading(true)
+        setOffset(0)
+        setHasMore(true)
+        loadPage(0, false, searchTerm)
       } else {
         toast.error(data.mensaje || "Error al subir")
       }
@@ -151,8 +202,8 @@ export function MediaPage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
                   placeholder="Buscar por nombre..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
                   className="pl-9 bg-white dark:bg-gray-800"
                 />
               </div>
@@ -219,7 +270,7 @@ export function MediaPage() {
                 />
               ))}
             </div>
-          ) : filteredItems.length === 0 ? (
+          ) : items.length === 0 ? (
             <div className="py-16 text-center text-gray-500 dark:text-gray-400">
               <ImageIcon className="h-16 w-16 mx-auto mb-4 opacity-40" />
               <p className="font-medium">
@@ -230,8 +281,9 @@ export function MediaPage() {
               </p>
             </div>
           ) : (
+            <>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-              {filteredItems.map((item) => (
+              {items.map((item) => (
                 <div
                   key={item.path}
                   className="group relative aspect-square rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-primary/50 transition-colors"
@@ -277,11 +329,15 @@ export function MediaPage() {
                 </div>
               ))}
             </div>
+            <div ref={sentinelRef} className="h-4 flex items-center justify-center">
+              {loadingMore && <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />}
+            </div>
+            </>
           )}
 
           {items.length > 0 && (
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              {filteredItems.length} de {items.length} archivo(s)
+              {items.length} de {total} archivo(s){hasMore ? " — sigue bajando para cargar más" : ""}
             </p>
           )}
         </CardContent>

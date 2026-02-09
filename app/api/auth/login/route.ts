@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { setAuthCookieOnResponse } from "@/lib/auth"
+import { setAuthCookieOnResponse, createSessionToken } from "@/lib/auth"
 import { loginSchema } from "@/lib/validations/auth"
 import bcrypt from "bcryptjs"
 
@@ -62,6 +62,13 @@ export async function POST(request: Request) {
       )
     }
 
+    const payload = {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      impersonationUserId: null as string | null,
+    }
+    const token = await createSessionToken(payload)
     const response = NextResponse.json({
       status: "ok",
       user: {
@@ -70,13 +77,9 @@ export async function POST(request: Request) {
         name: user.name,
         role: user.role,
       },
+      token,
     })
-    return setAuthCookieOnResponse(response, {
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-      impersonationUserId: null,
-    })
+    return setAuthCookieOnResponse(response, payload)
   } catch (err) {
     console.error("[auth/login]", err)
     return NextResponse.json(

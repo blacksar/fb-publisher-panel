@@ -9,9 +9,23 @@ export const runtime = "nodejs"
 const ALLOWED_MIMES = ["image/jpeg", "image/png", "image/gif", "image/webp"]
 const MAX_SIZE = 10 * 1024 * 1024 // 10 MB
 
+/** API key para bots (ej. Python). Variable de entorno MEDIA_API_KEY. */
+function isAuthorizedByApiKey(request: Request): boolean {
+  const key = process.env.MEDIA_API_KEY
+  if (!key || key.length < 16) return false
+  const headerKey = request.headers.get("x-api-key")?.trim()
+  if (headerKey && headerKey === key) return true
+  const auth = request.headers.get("authorization")
+  if (auth?.startsWith("Bearer ") && auth.slice(7).trim() === key) return true
+  return false
+}
+
 export async function POST(request: Request) {
-  const authResult = await requireAuth(request)
-  if (authResult instanceof NextResponse) return authResult
+  const byApiKey = isAuthorizedByApiKey(request)
+  if (!byApiKey) {
+    const authResult = await requireAuth(request)
+    if (authResult instanceof NextResponse) return authResult
+  }
 
   try {
     const body = await request.json()
