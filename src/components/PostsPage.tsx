@@ -214,7 +214,7 @@ const initialTabState = (): Record<TabId, Post[]> =>
 const initialOffsets = (): Record<TabId, number> =>
   ({ published: 0, draft: 0, scheduled: 0, pending: 0, failed: 0, trash: 0 })
 const initialBools = (): Record<TabId, boolean> =>
-  ({ published: true, draft: true, scheduled: true, pending: true, failed: true, trash: true })
+  ({ published: false, draft: false, scheduled: false, pending: false, failed: false, trash: false })
 
 export function PostsPage() {
   const [postsByTab, setPostsByTab] = useState<Record<TabId, Post[]>>(initialTabState)
@@ -447,6 +447,8 @@ export function PostsPage() {
       setPostsByTab(initialTabState())
       setOffsetByTab(initialOffsets())
       setHasMoreByTab(() => ({ published: true, draft: true, scheduled: true, pending: true, failed: true, trash: true }))
+      setLoadingTab(initialBools())
+      setLoadingMoreTab(() => ({ published: false, draft: false, scheduled: false, pending: false, failed: false, trash: false }))
       loadPageForTab(activeTab as TabId, false)
     })()
   }, [selectedSessionId])
