@@ -2,15 +2,14 @@ import { NextResponse } from "next/server"
 import { promises as fs } from "fs"
 import path from "path"
 import crypto from "crypto"
-import { requireAuth } from "@/lib/auth"
 
 export const runtime = "nodejs"
 
 const ALLOWED_MIMES = ["image/jpeg", "image/png", "image/gif", "image/webp"]
 const MAX_SIZE = 10 * 1024 * 1024 // 10 MB
 
-/** API key para bots (ej. Python). Variable de entorno MEDIA_API_KEY. */
-function isAuthorizedByApiKey(request: Request): boolean {
+/** Autorización solo por variable de entorno MEDIA_API_KEY (header X-API-Key o Authorization: Bearer). */
+function isAuthorized(request: Request): boolean {
   const key = process.env.MEDIA_API_KEY
   if (!key || key.length < 16) return false
   const headerKey = request.headers.get("x-api-key")?.trim()
@@ -21,10 +20,11 @@ function isAuthorizedByApiKey(request: Request): boolean {
 }
 
 export async function POST(request: Request) {
-  const byApiKey = isAuthorizedByApiKey(request)
-  if (!byApiKey) {
-    const authResult = await requireAuth(request)
-    if (authResult instanceof NextResponse) return authResult
+  if (!isAuthorized(request)) {
+    return NextResponse.json(
+      { status: "error", mensaje: "No autorizado. Usa el header X-API-Key o Authorization: Bearer con MEDIA_API_KEY." },
+      { status: 401 }
+    )
   }
 
   try {
