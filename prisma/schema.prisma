@@ -1,0 +1,91 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+model User {
+  id            String     @id @default(cuid())
+  email         String     @unique
+  name          String?
+  passwordHash  String
+  role          Role       @default(USER)
+  createdById   String?
+  createdBy     User?      @relation("UserCreator", fields: [createdById], references: [id])
+  createdUsers  User[]     @relation("UserCreator")
+  createdAt     DateTime   @default(now())
+  active        Boolean    @default(true)
+
+  fbSessions    FBSession[]
+  posts         Post[]
+  settings      Setting[]
+}
+
+model FBSession {
+  id          Int       @id @default(autoincrement())
+  name        String
+  cookie      String    @db.Text
+  status      String // active, inactive, pending, verified
+  c_user      String? // Facebook user ID
+  user_name   String? // Facebook user name
+  created_at  DateTime  @default(now())
+  verified_at DateTime?
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  posts       Post[]
+  pages       FBPage[]
+}
+
+model Post {
+  id           Int       @id @default(autoincrement())
+  title        String
+  content      String    @db.Text
+  status       String // draft, scheduled, published, failed
+  scheduled_at DateTime?
+  published_at DateTime?
+  image_url    String?   @db.LongText  // URL o ruta para preview en UI
+  image_base64 String?   @db.LongText  // Imagen en base64 para publicar (cron no depende de disco/HTTP)
+  page_name    String
+  page_id      String
+  fb_post_id   String?   // ID del post en Facebook
+  created_at   DateTime  @default(now())
+  session      FBSession @relation(fields: [session_id], references: [id])
+  session_id   Int
+  page         FBPage?   @relation(fields: [page_id], references: [id])
+  error_log    String?   @db.LongText
+  deleted_at   DateTime? // Papelera: no null = en papelera
+  userId       String?
+  user         User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model FBPage {
+  id         String    @id
+  name       String
+  postsCount Int       @default(0)
+  isSyncing  Boolean   @default(false)
+  is_selected Boolean  @default(false)
+  session    FBSession @relation(fields: [session_id], references: [id])
+  session_id Int
+  posts      Post[]
+}
+
+model Setting {
+  id      String   @id @default(cuid())
+  userId  String?
+  key     String
+  value   String   @db.Text
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, key])
+}

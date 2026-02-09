@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE `Post` ADD COLUMN `image_base64` LONGTEXT NULL;
+
+-- AddForeignKey
+ALTER TABLE `Post` ADD CONSTRAINT `Post_page_id_fkey` FOREIGN KEY (`page_id`) REFERENCES `FBPage`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
