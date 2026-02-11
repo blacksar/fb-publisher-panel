@@ -129,9 +129,11 @@ export async function POST(request: Request) {
     }
 
     // --- PUBLICAR EN FACEBOOK ---
+    const pageToken = (session as { source?: string }).source === "oauth" ? (pageData?.page_access_token ?? null) : undefined
     const result = await publishToFacebook(
       { title, content: comment, imageBase64: imageForPublish, pageId },
-      session
+      session,
+      pageToken
     )
 
     if (!result.success) {

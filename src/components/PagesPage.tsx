@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-// Removed motion import - no animations needed
+import { useSearchParams } from "next/navigation"
 import { Search, RefreshCw, Plus, Trash2, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -32,6 +32,7 @@ interface SessionOption {
 }
 
 export function PagesPage() {
+  const searchParams = useSearchParams()
   const [myPages, setMyPages] = useState<Page[]>([])
   const [availablePages, setAvailablePages] = useState<Page[]>([])
   const [sessions, setSessions] = useState<SessionOption[]>([])
@@ -60,7 +61,21 @@ export function PagesPage() {
   const [pagesToRemove, setPagesToRemove] = useState<string[]>([])
   const [isRemoving, setIsRemoving] = useState(false)
 
-  // Cargar selectedSessionId desde localStorage solo después de montar
+  // Toast por callback OAuth (?connected=1 | ?error=...)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const connected = searchParams.get("connected")
+    const error = searchParams.get("error")
+    if (connected === "1") {
+      showToast.success("Cuenta de Facebook conectada. Tus páginas están disponibles.")
+      window.history.replaceState({}, "", "/dashboard/pages")
+    } else if (error) {
+      const msg = error === "access_denied" ? "Acceso denegado" : error === "invalid_state" ? "Sesión inválida" : error === "no_api_url" ? "Configura la URL de la API en Ajustes" : "Error al conectar"
+      showToast.error(msg)
+      window.history.replaceState({}, "", "/dashboard/pages")
+    }
+  }, [searchParams])
+
   useEffect(() => {
     setMounted(true)
   }, [])
@@ -352,7 +367,7 @@ export function PagesPage() {
         <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
             <CardTitle className="text-gray-900 dark:text-white">Mis Páginas ({myPages.length})</CardTitle>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center flex-wrap gap-2">
               <Select
                 value={selectedSessionId}
                 onValueChange={(val) => {
@@ -371,6 +386,16 @@ export function PagesPage() {
                   ))}
                 </SelectContent>
               </Select>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-[#1877f2] text-[#1877f2] hover:bg-[#1877f2]/10"
+                onClick={() => { window.location.href = "/api/facebook/connect" }}
+              >
+                Conectar con Facebook
+              </Button>
 
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />

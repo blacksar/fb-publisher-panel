@@ -9,16 +9,25 @@ export async function GET(request: Request) {
   const effectiveUserId = getEffectiveUserId(authResult)
 
   try {
-    const apiSetting = await prisma.setting.findFirst({
+    const keys = ["fb_api_url", "fb_app_id", "fb_app_secret", "fb_redirect_uri"] as const
+    const settings = await prisma.setting.findMany({
       where: {
-        key: "fb_api_url",
+        key: { in: [...keys] },
         OR: [{ userId: effectiveUserId }, { userId: null }],
       },
-      orderBy: { userId: "desc" },
     })
-    return NextResponse.json({
-      fb_api_url: apiSetting?.value || "",
-    })
+    const byKey: Record<(typeof keys)[number], string> = {
+      fb_api_url: "",
+      fb_app_id: "",
+      fb_app_secret: "",
+      fb_redirect_uri: "",
+    }
+    for (const k of keys) {
+      const userRow = settings.find((s) => s.key === k && s.userId === effectiveUserId)
+      const globalRow = settings.find((s) => s.key === k && s.userId === null)
+      byKey[k] = (userRow ?? globalRow)?.value ?? ""
+    }
+    return NextResponse.json(byKey)
   } catch (error) {
     return NextResponse.json({ error: "Error fetching settings" }, { status: 500 })
   }
@@ -30,15 +39,17 @@ export async function POST(request: Request) {
   const effectiveUserId = getEffectiveUserId(authResult)
 
   try {
-    const { fb_api_url } = await request.json()
-    if (fb_api_url) {
-      await prisma.setting.upsert({
-        where: {
-          userId_key: { userId: effectiveUserId, key: "fb_api_url" },
-        },
-        update: { value: fb_api_url },
-        create: { userId: effectiveUserId, key: "fb_api_url", value: fb_api_url },
-      })
+    const body = await request.json()
+    const keys = ["fb_api_url", "fb_app_id", "fb_app_secret", "fb_redirect_uri"] as const
+    for (const key of keys) {
+      const value = body[key]
+      if (value !== undefined && value !== null && String(value).trim() !== "") {
+        await prisma.setting.upsert({
+          where: { userId_key: { userId: effectiveUserId, key } },
+          update: { value: String(value).trim() },
+          create: { userId: effectiveUserId, key, value: String(value).trim() },
+        })
+      }
     }
     return NextResponse.json({ status: "ok" })
   } catch (error) {

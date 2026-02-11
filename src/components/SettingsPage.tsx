@@ -15,15 +15,18 @@ import { Separator } from "@/components/ui/separator"
 export function SettingsPage() {
   const [loading, setLoading] = useState(false)
   const [apiUrl, setApiUrl] = useState("")
+  const [fbAppId, setFbAppId] = useState("")
+  const [fbAppSecret, setFbAppSecret] = useState("")
+  const [fbRedirectUri, setFbRedirectUri] = useState("")
 
   useEffect(() => {
-    // Cargar configuración actual
     fetch("/api/settings")
       .then((res) => res.json())
       .then((data) => {
-        if (data.fb_api_url) {
-          setApiUrl(data.fb_api_url)
-        }
+        if (data.fb_api_url != null) setApiUrl(data.fb_api_url)
+        if (data.fb_app_id != null) setFbAppId(data.fb_app_id)
+        if (data.fb_app_secret != null) setFbAppSecret(data.fb_app_secret)
+        if (data.fb_redirect_uri != null) setFbRedirectUri(data.fb_redirect_uri)
       })
       .catch((err) => console.error("Error cargando ajustes:", err))
   }, [])
@@ -34,7 +37,12 @@ export function SettingsPage() {
       const res = await fetch("/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fb_api_url: apiUrl }),
+        body: JSON.stringify({
+          fb_api_url: apiUrl,
+          fb_app_id: fbAppId || undefined,
+          fb_app_secret: fbAppSecret || undefined,
+          fb_redirect_uri: fbRedirectUri || undefined,
+        }),
       })
 
       if (res.ok) {
@@ -75,7 +83,40 @@ export function SettingsPage() {
                 placeholder="https://facebook-logic..."
                 className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
               />
-              <p className="text-xs text-gray-500 mt-1">URL base para la publicación de posts.</p>
+              <p className="text-xs text-gray-500 mt-1">URL base para la publicación de posts y llamadas OAuth.</p>
+            </div>
+
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white pt-2">Facebook OAuth (conectar páginas)</h3>
+            <div className="space-y-4">
+              <div>
+                <Label className="text-gray-900 dark:text-white block mb-2">App ID de Facebook</Label>
+                <Input
+                  value={fbAppId}
+                  onChange={(e) => setFbAppId(e.target.value)}
+                  placeholder="123456789..."
+                  className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                />
+              </div>
+              <div>
+                <Label className="text-gray-900 dark:text-white block mb-2">Clave secreta (App Secret)</Label>
+                <Input
+                  type="password"
+                  value={fbAppSecret}
+                  onChange={(e) => setFbAppSecret(e.target.value)}
+                  placeholder="••••••••"
+                  className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                />
+              </div>
+              <div>
+                <Label className="text-gray-900 dark:text-white block mb-2">Redirect URI (callback)</Label>
+                <Input
+                  value={fbRedirectUri}
+                  onChange={(e) => setFbRedirectUri(e.target.value)}
+                  placeholder="https://tu-dominio.com/api/facebook/callback"
+                  className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                />
+                <p className="text-xs text-gray-500 mt-1">Debe coincidir con la configurada en el dashboard de Facebook.</p>
+              </div>
             </div>
           </div>
 

@@ -9,7 +9,8 @@ export async function POST(request: Request) {
   const effectiveUserId = getEffectiveUserId(authResult)
 
   try {
-    const { cookies } = await request.json()
+    const body = await request.json()
+    const { cookies, sessionId } = body || {}
 
     const apiSetting = await prisma.setting.findFirst({
       where: {
@@ -22,12 +23,32 @@ export async function POST(request: Request) {
     if (!base) {
       return NextResponse.json({ status_code: 400, mensaje: "Configura la URL de la API en Ajustes primero" }, { status: 400 })
     }
-    const url = `${base}/get_session/`
 
+    const sessionWhere = { userId: effectiveUserId }
+    const oauthSession = sessionId
+      ? await prisma.fBSession.findFirst({
+          where: { id: sessionId, ...sessionWhere },
+          select: { source: true, oauth_access_token: true },
+        })
+      : null
+
+    if (oauthSession?.source === "oauth" && oauthSession?.oauth_access_token) {
+      const res = await fetch(`${base}/facebook/verify_token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_access_token: oauthSession.oauth_access_token }),
+        cache: "no-store",
+      })
+      const data = await res.json().catch(() => ({}))
+      const valid = data?.valid === true || res.ok
+      return NextResponse.json({ status_code: valid ? 200 : 401, mensaje: valid ? "Token válido" : "Token inválido o expirado" })
+    }
+
+    const url = `${base}/get_session/`
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cookies }),
+      body: JSON.stringify({ cookies: cookies ?? [] }),
       cache: "no-store",
     })
     const data = await res.json()

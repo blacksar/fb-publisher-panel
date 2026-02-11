@@ -117,16 +117,18 @@ export async function verifySession(id: number, data: {
     })
 
     if (pendingPosts.length > 0) {
-      // Ejecutar en background (no esperar para responder UI) - aunque Server Actions esperan.
-      // Hacemos un Promise.all para procesar todos
+      const isOAuth = (session as { source?: string }).source === "oauth"
       await Promise.all(pendingPosts.map(async (post: any) => {
         try {
+          const pageToken = isOAuth
+            ? (await prisma.fBPage.findUnique({ where: { id: post.page_id }, select: { page_access_token: true } }))?.page_access_token ?? null
+            : undefined
           const result = await publishToFacebook({
             title: post.title,
             content: post.content,
             imageBase64: post.image_url || undefined,
             pageId: post.page_id
-          }, session)
+          }, session, pageToken)
 
           if (result.success) {
             await prisma.post.update({

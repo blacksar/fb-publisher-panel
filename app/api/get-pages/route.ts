@@ -39,7 +39,79 @@ export async function POST(request: Request) {
     const cachedPages = await prisma.fBPage.findMany({ where: { session_id: session.id } })
 
     if (!refresh) {
-      return NextResponse.json({ status: "cached", pages: cachedPages })
+      const safe = cachedPages.map((p: any) => ({ id: p.id, name: p.name, is_selected: p.is_selected ?? false }))
+      return NextResponse.json({ status: "cached", pages: safe })
+    }
+
+    // Sesión OAuth: llamada puntual a la API externa con user_access_token
+    const isOAuth = (session as any).source === "oauth"
+    if (isOAuth) {
+      const userToken = (session as any).oauth_access_token
+      if (!userToken) {
+        return NextResponse.json({ status: "error", mensaje: "Sesión OAuth sin token" }, { status: 400 })
+      }
+      const apiSetting = await prisma.setting.findFirst({
+        where: {
+          key: "fb_api_url",
+          OR: [{ userId: effectiveUserId }, { userId: null }],
+        },
+        orderBy: { userId: "desc" },
+      })
+      const base = apiSetting?.value?.trim().replace(/\/+$/, "")
+      if (!base) {
+        return NextResponse.json({ status: "error", mensaje: "Configura la URL de la API en Ajustes primero" }, { status: 400 })
+      }
+      try {
+        const res = await fetch(`${base}/facebook/get_pages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_access_token: userToken }),
+          cache: "no-store",
+        })
+        if (!res.ok) {
+          const text = await res.text()
+          return NextResponse.json({ status: "error", mensaje: text?.slice(0, 200) || "Error al obtener páginas" }, { status: 500 })
+        }
+        const data = await res.json()
+        const pagesFromApi = Array.isArray(data.pages) ? data.pages : (data.data && Array.isArray(data.data) ? data.data : [])
+        const dbPages = await prisma.fBPage.findMany({ where: { session_id: session.id } })
+        const dbMap = new Map(dbPages.map((p: any) => [p.id, p]))
+        const merged = pagesFromApi.map((p: any) => {
+          const id = String(p?.id ?? "").trim()
+          const name = String(p?.name ?? "Sin nombre").trim()
+          const access_token = typeof p?.access_token === "string" ? p.access_token : ""
+          const local = dbMap.get(id)
+          return {
+            id,
+            name,
+            access_token,
+            is_selected: local ? (local as any).is_selected : false,
+          }
+        })
+        for (const p of merged) {
+          if (!p.id) continue
+          await prisma.fBPage.upsert({
+            where: { id: p.id },
+            create: {
+              id: p.id,
+              name: p.name,
+              session_id: session.id,
+              page_access_token: p.access_token || null,
+              is_selected: p.is_selected ?? false,
+            },
+            update: {
+              name: p.name,
+              session_id: session.id,
+              page_access_token: p.access_token || null,
+            },
+          })
+        }
+        const updated = await prisma.fBPage.findMany({ where: { session_id: session.id } })
+        const safe = updated.map((p: any) => ({ id: p.id, name: p.name, is_selected: p.is_selected ?? false }))
+        return NextResponse.json({ status: "ok", pages: safe, resultado: { status_code: 200, resultado: JSON.stringify(safe) } })
+      } catch (err: any) {
+        return NextResponse.json({ status: "error", mensaje: err.message || "Error al obtener páginas" }, { status: 500 })
+      }
     }
 
     let cookiesList

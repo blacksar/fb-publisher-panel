@@ -33,18 +33,23 @@ model User {
 }
 
 model FBSession {
-  id          Int       @id @default(autoincrement())
-  name        String
-  cookie      String    @db.Text
-  status      String // active, inactive, pending, verified
-  c_user      String? // Facebook user ID
-  user_name   String? // Facebook user name
-  created_at  DateTime  @default(now())
-  verified_at DateTime?
-  userId      String?
-  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  posts       Post[]
-  pages       FBPage[]
+  id                    Int       @id @default(autoincrement())
+  name                  String
+  cookie                String    @db.Text // vacío para sesiones source=oauth
+  status                String // active, inactive, pending, verified
+  c_user                String? // Facebook user ID
+  user_name             String? // Facebook user name
+  created_at            DateTime  @default(now())
+  verified_at           DateTime?
+  userId                String?
+  user                  User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  posts                 Post[]
+  pages                 FBPage[]
+
+  source                String    @default("cookie") // cookie | oauth
+  oauth_access_token    String?   @db.Text
+  oauth_fb_user_id      String?
+  oauth_token_expires_at DateTime?
 }
 
 model Post {
@@ -70,14 +75,15 @@ model Post {
 }
 
 model FBPage {
-  id         String    @id
-  name       String
-  postsCount Int       @default(0)
-  isSyncing  Boolean   @default(false)
-  is_selected Boolean  @default(false)
-  session    FBSession @relation(fields: [session_id], references: [id])
-  session_id Int
-  posts      Post[]
+  id                String    @id
+  name              String
+  postsCount        Int       @default(0)
+  isSyncing         Boolean   @default(false)
+  is_selected       Boolean   @default(false)
+  session           FBSession @relation(fields: [session_id], references: [id])
+  session_id        Int
+  posts             Post[]
+  page_access_token String?   @db.Text // para sesiones OAuth; se envía a la API externa al publicar
 }
 
 model Setting {

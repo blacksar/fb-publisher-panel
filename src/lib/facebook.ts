@@ -82,10 +82,11 @@ export async function verifySessionLive(cookies: string): Promise<boolean> {
     }
 }
 
-// 2. Publicar en Facebook (Lógica compartida)
+// 2. Publicar en Facebook (Lógica compartida: cookie o OAuth vía API externa)
 export async function publishToFacebook(
     postData: { title: string, content: string, imageBase64?: string, pageId: string },
-    session: { id: number, cookie: string }
+    session: { id: number, cookie: string, source?: string },
+    pageAccessToken?: string | null
 ): Promise<{ success: boolean, fb_post_id?: string, error?: string, errorCode?: string, errorLog?: any }> {
 
     // Preparar imagen: solo enviar base64 válido (data:image/...;base64,...)
@@ -98,13 +99,47 @@ export async function publishToFacebook(
         }
     }
 
+    const apiSetting = await prisma.setting.findFirst({ where: { key: "fb_api_url" } })
+    const base = apiSetting?.value?.trim().replace(/\/+$/, "")
+    if (!base) return { success: false, error: "Configura la URL de la API en Ajustes primero" }
+
+    // OAuth: llamada puntual a la API externa con page_access_token
+    const useOAuth = (session.source === "oauth" && pageAccessToken) || pageAccessToken
+    if (useOAuth) {
+        try {
+            const res = await fetch(`${base}/facebook/publish`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    page_id: postData.pageId,
+                    page_access_token: pageAccessToken,
+                    message: `${postData.title || ""}\n\n${postData.content || ""}`.trim() || postData.content,
+                    image_base64: realBase64,
+                }),
+                cache: "no-store",
+            })
+            const contentType = res.headers.get("content-type") || ""
+            const data: any = contentType.includes("application/json") ? await res.json() : { success: false, error: await res.text() }
+            if (data.success && data.fb_post_id) {
+                return { success: true, fb_post_id: data.fb_post_id }
+            }
+            const errorMsg = data.error || data.mensaje || data.message || "Error al publicar"
+            const isAuthError = res.status === 401 || res.status === 400 || String(errorMsg).toLowerCase().includes("token") || String(errorMsg).toLowerCase().includes("expir")
+            return {
+                success: false,
+                error: errorMsg,
+                errorCode: isAuthError ? "SESSION_EXPIRED" : undefined,
+                errorLog: data,
+            }
+        } catch (e: any) {
+            return { success: false, error: e.message || "Error de conexión" }
+        }
+    }
+
     try {
         let cookies
         try { cookies = JSON.parse(session.cookie) } catch { return { success: false, error: "Cookie corrupta" } }
 
-        const apiSetting = await prisma.setting.findFirst({ where: { key: "fb_api_url" } })
-        const base = apiSetting?.value?.trim().replace(/\/+$/, "")
-        if (!base) return { success: false, error: "Configura la URL de la API en Ajustes primero" }
         const url = `${base}/publish/`
 
         const fbRes = await fetch(url, {

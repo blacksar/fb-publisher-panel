@@ -15,6 +15,14 @@ export async function GET(request: Request) {
     const sessions = await prisma.fBSession.findMany({
       where,
       orderBy: { id: "desc" },
+      select: {
+        id: true,
+        name: true,
+        user_name: true,
+        status: true,
+        source: true,
+        verified_at: true,
+      },
     })
     return NextResponse.json({ status: "ok", sessions }, {
       headers: {
